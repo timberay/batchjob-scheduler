@@ -3,9 +3,11 @@
 # bin/scheduler.sh
 # OpenGrok Index Scheduler Main Script
 
-PROJECT_ROOT="/home/tonny/projects/opengrok-scheduler"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/bin/monitor.sh"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
+LOG_DIR="$PROJECT_ROOT/logs"
+mkdir -p "$LOG_DIR"
 
 # Function to check if current time is within range
 # Supports cross-day ranges (e.g. 18:00 to 06:00)
@@ -34,7 +36,10 @@ check_time_range() {
 
 # Subroutine to log to console and DB if needed
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    local LOG_FILE="$LOG_DIR/scheduler_$(date +%Y%m%d).log"
+    local MESSAGE="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$MESSAGE"
+    echo "$MESSAGE" >> "$LOG_FILE"
 }
 
 # Helper to format duration
@@ -172,12 +177,12 @@ if [[ "$1" != "--no-run" ]]; then
         CPU=$(get_cpu_usage)
         MEM=$(get_mem_usage)
         DISK=$(get_disk_usage "/") # Should be opengrok data path in prod
+        DISKIO=$(get_diskio_usage)
+        NET=$(get_bandwidth_usage)
         PROC=$(get_proc_usage)
         
-        # We need a proc threshold. Requirements say 70% of process.
-        # This is ambiguous without max process. Let's assume a dummy "70" for proc count if not specified
-        if ! check_thresholds "$CPU" "$MEM" "$DISK" "$PROC" "$THRESHOLD"; then
-            log "Resource limit exceeded (CPU:$CPU MEM:$MEM DISK:$DISK PROC:$PROC). Waiting..."
+        if ! check_thresholds "$CPU" "$MEM" "$DISK" "$DISKIO" "$NET" "$PROC" "$THRESHOLD"; then
+            log "Resource limit exceeded: $LAST_BYPASS_REASON. Waiting..."
             sleep "$INTERVAL"
             continue
         fi

@@ -50,11 +50,41 @@ fi
 # 5. Threshold Logic Test (Mocking 80% usage)
 echo "[Test] Mocking 80% usage scenario..."
 THRESHOLD=70
-check_thresholds 80 10 10 10 $THRESHOLD
+check_thresholds 80 10 10 10 10 10 $THRESHOLD
 if [ $? -ne 0 ]; then
     echo "[Pass] Threshold triggered (Exceeds 70%)."
 else
     echo "[Fail] Threshold not triggered for 80%."
+    exit 1
+fi
+
+# 6. Disk I/O Threshold Test (Mocking 80% Disk I/O)
+echo "[Test] Mocking 80% Disk I/O scenario..."
+check_thresholds 10 10 10 80 10 10 $THRESHOLD
+if [ $? -ne 0 ]; then
+    echo "[Pass] Disk I/O Threshold triggered correctly."
+else
+    echo "[Fail] Disk I/O Threshold not triggered for 80%."
+    exit 1
+fi
+
+# 7. Network Bandwidth Usage Check
+BW_USAGE=$(get_bandwidth_usage)
+echo "Current Network Usage Score: $BW_USAGE"
+if [[ $BW_USAGE =~ ^[0-9]+$ ]] && [ "$BW_USAGE" -ge 0 ] && [ "$BW_USAGE" -le 100 ]; then
+    echo "[Pass] Network usage score calculated correctly."
+else
+    echo "[Fail] Invalid Network usage score: $BW_USAGE"
+    exit 1
+fi
+
+# 8. Network Threshold Test (Mocking 80% Network Usage)
+echo "[Test] Mocking 80% Network scenario..."
+check_thresholds 10 10 10 10 80 10 $THRESHOLD
+if [ $? -ne 0 ]; then
+    echo "[Pass] Network Threshold triggered correctly."
+else
+    echo "[Fail] Network Threshold not triggered for 80%."
     exit 1
 fi
 

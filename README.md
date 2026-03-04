@@ -5,7 +5,11 @@
 ## 주요 기능
 
 - **시간 기반 스케줄링**: 설정된 시간대 (예: 18:00 ~ 익일 06:00) 내에서만 인덱싱 작업 수행
-- **리소스 모니터링**: CPU, Memory, Disk, Process 사용율을 5분 주기로 검사하여 모두 70% 이하일 때만 신규 작업 착수
+- **정밀한 리소스 모니터링**: 
+  - **CPU**: `top`의 2회 반복 측정을 통해 순간적인 실제 부하 반영
+  - **Memory**: 캐시/버퍼를 제외한 실질 가용 메모리(`available`) 기준 판단
+  - **Network**: 인터페이스 속도 자동 감지 및 실시간 대역폭 사용률 계산
+  - **Disk I/O**: `iostat` %util 및 Blocked Process 상태를 종합하여 검사
 - **SQLite3 기반 관리**: 서비스 목록, 스케줄러 설정, 작업 로그 및 상태를 SQLite3 DB로 통합 관리
 - **상태 리포팅**: `--status` 명령어를 통해 처리 현황, 시작 시간, 소요 시간, 결과 등을 콘솔에 출력
 - **독립적 구동**: 스케줄러가 백그라운드에서 실행 중이더라도 별도 세션에서 상태 확인 가능
@@ -25,7 +29,7 @@ opengrok-scheduler/
 ├── tests/              # TDD를 위한 단계별 테스트 스크립트
 ├── logs/               # 실행 로그 보관 디렉토리
 ├── README.md           # 프로젝트 가이드
-├── SPEC.md             # 상세 개발 규격서
+├── ARCHITECTURE.md     # 상세 개발 설계서 (기존 SPEC.md)
 └── TASK.md             # 구현 진행 기록
 ```
 
@@ -33,7 +37,7 @@ opengrok-scheduler/
 
 ### 1. 사전 요구사항
 - Bash Shell
-- SQLite3
+- SQLite3, sysstat (iostat)
 - Docker (인덱싱 대상 서비스가 컨테이너로 구동 중이어야 함)
 
 ### 2. 데이터베이스 초기화
@@ -69,24 +73,22 @@ chmod +x bin/*.sh
 ./bin/scheduler.sh --status
 ```
 
-**출력 예시:**
-```text
-[OpenGrok Indexing Summary]
---------------------------------------------------------------------------------
-Service Name              | Status       | Start Time           | Duration     | Result    
---------------------------------------------------------------------------------
-opengrok-service-1        | COMPLETED    | 2026-02-26 18:00:01  | 0h 45m 20s   | COMPLETED 
-opengrok-service-2        | RUNNING      | 2026-02-26 18:45:30  | -            | IN_PROGRESS
-...
---------------------------------------------------------------------------------
-Total: 70 | Done Today: 15
-```
+### 설정 값 확인 및 변경
+`config` 테이블을 통해 스케줄러 동작을 세밀하게 조정할 수 있습니다.
 
-### 설정 변경 (SQLite3 활용)
-작업 시간대나 리소스 임계치를 DB에서 즉시 변경할 수 있습니다.
+| Key | Description | Default |
+|:---|:---|:---|
+| `start_time` | 작업 시작 가능 시간 | `18:00` |
+| `end_time` | 작업 종료 시간 | `06:00` |
+| `resource_threshold` | 리소스 임계치 (%) | `70` |
+| `check_interval` | 상태 체크 주기 (초) | `300` |
+| `net_interface` | 모니터링 인터페이스 (자동 감지 가능) | - |
+| `max_bandwidth` | 최대 대역폭 (Bytes/s, 속도 감지 실패 시 사용) | - |
+| `disk_device` | I/O 모니터링 대상 디스크 (자동 감지 가능) | - |
+
 ```bash
-# 시작 시간을 20:00로 변경
-./bin/db_query.sh "UPDATE config SET value='20:00' WHERE key='start_time';"
+# 임계치를 80%로 상향
+./bin/db_query.sh "UPDATE config SET value='80' WHERE key='resource_threshold';"
 ```
 
 ## 테스트 실행
