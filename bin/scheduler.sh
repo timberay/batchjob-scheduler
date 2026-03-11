@@ -17,9 +17,9 @@ check_time_range() {
     local CURRENT=${3:-$(date +%H:%M)}
     
     # Convert to minutes from midnight
-    local S_MIN=$(( $(date -d "$START" +%H)*60 + $(date -d "$START" +%M) ))
-    local E_MIN=$(( $(date -d "$END" +%H)*60 + $(date -d "$END" +%M) ))
-    local C_MIN=$(( $(date -d "$CURRENT" +%H)*60 + $(date -d "$CURRENT" +%M) ))
+    local S_MIN=$(( $(date -d "$START" +%-H)*60 + $(date -d "$START" +%-M) ))
+    local E_MIN=$(( $(date -d "$END" +%-H)*60 + $(date -d "$END" +%-M) ))
+    local C_MIN=$(( $(date -d "$CURRENT" +%-H)*60 + $(date -d "$CURRENT" +%-M) ))
     
     if [ "$S_MIN" -le "$E_MIN" ]; then
         if [ "$C_MIN" -ge "$S_MIN" ] && [ "$C_MIN" -lt "$E_MIN" ]; then
@@ -163,6 +163,9 @@ if [[ "$1" != "--no-run" ]]; then
         # 1. Load Config
         START_TIME=$($DB_QUERY "SELECT value FROM config WHERE key='start_time';")
         END_TIME=$($DB_QUERY "SELECT value FROM config WHERE key='end_time';")
+        THRESHOLD=$($DB_QUERY "SELECT value FROM config WHERE key='resource_threshold';")
+        INTERVAL=$($DB_QUERY "SELECT value FROM config WHERE key='check_interval';")
+
         # 2. Check Time Range
         if ! check_time_range "$START_TIME" "$END_TIME" > /dev/null; then
             log "Outside working hours ($START_TIME ~ $END_TIME). Sleeping..."
