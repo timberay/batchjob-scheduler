@@ -181,15 +181,30 @@ if [[ "$1" != "--no-run" ]]; then
             if ! check_thresholds "$CPU" "$MEM" "$DISK" "$DISKIO" "$NET" "$PROC" "$THRESHOLD"; then
                 log "Resource limit exceeded: $LAST_BYPASS_REASON. Waiting..."
             else
-                # 4. Get Next Job
-                NEXT_SERVICE_ID=$($DB_QUERY "SELECT s.id FROM services s LEFT JOIN jobs j ON s.id = j.service_id AND j.start_time > datetime('now', '-20 hours') WHERE s.is_active=1 AND (j.status IS NULL OR j.status='FAILED') ORDER BY s.priority DESC LIMIT 1;")
+                # 4. Get Next Job (Exclude services already RUNNING or COMPLETED today)
+                QUERY="SELECT s.id FROM services s 
+                       WHERE s.is_active=1 
+                       AND NOT EXISTS (
+                           SELECT 1 FROM jobs j 
+                           WHERE j.service_id = s.id 
+                           AND j.start_time > datetime('now', '-20 hours') 
+                           AND j.status IN ('RUNNING', 'COMPLETED')
+                       )
+                       ORDER BY s.priority DESC LIMIT 1;"
+                NEXT_SERVICE_ID=$($DB_QUERY "$QUERY")
                 
                 if [ -z "$NEXT_SERVICE_ID" ]; then
                     log "All tasks completed for today. Waiting..."
                 else
                     CONTAINER_NAME=$($DB_QUERY "SELECT container_name FROM services WHERE id=$NEXT_SERVICE_ID;")
-                    # 5. Execute Job (Simple Background)
-                    run_indexing_task "$NEXT_SERVICE_ID" "$CONTAINER_NAME" &
+                    
+                    # 5. Double Check: Is there already a process running for this container?
+                    if ps -elf | grep -v grep | grep "run_indexing_task" | grep -q "$CONTAINER_NAME"; then
+                        log "Process check skip: $CONTAINER_NAME is already being indexed. Skipping..."
+                    else
+                        # 6. Execute Job (Simple Background)
+                        run_indexing_task "$NEXT_SERVICE_ID" "$CONTAINER_NAME" &
+                    fi
                 fi
             fi
         fi
