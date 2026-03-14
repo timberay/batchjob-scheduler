@@ -97,41 +97,41 @@ if [[ "$1" != "--no-run" ]]; then
     if [[ "$1" == "--status" ]]; then
         echo "[OpenGrok Indexing Summary]"
         echo "--------------------------------------------------------------------------------"
-        printf "%-25s | %-12s | %-20s | %-12s | %-10s\n" "Service Name" "Status" "Start Time" "Duration" "Result"
-        echo "--------------------------------------------------------------------------------"
+        printf "%-25s | %-12s | %-20s | %-12s | %-20s\n" "Service Name" "Status" "Start Time" "Duration" "Message"
+        echo "----------------------------------------------------------------------------------------------------"
         
-        # Query 결과를 최근 20시간 기준으로 필터링
+        # Query 결과를 최근 23시간 기준으로 필터링
         QUERY="SELECT s.container_name, j.status, j.start_time, j.duration, j.message 
                FROM services s 
                LEFT JOIN jobs j ON s.id = j.service_id 
-               WHERE (j.start_time > datetime('now', 'localtime', '-20 hours') OR j.start_time IS NULL)
+               WHERE (j.start_time > datetime('now', 'localtime', '-23 hours') OR j.start_time IS NULL)
                ORDER BY j.start_time DESC LIMIT 50;"
         
         $DB_QUERY "$QUERY" | while IFS='|' read -r name status start duration msg; do
             [[ -z "$name" ]] && continue
             F_DURATION=$(format_duration "$duration")
-            printf "%-25s | %-12s | %-20s | %-12s | %-10s\n" "$name" "$status" "$start" "$F_DURATION" "${status:-WAITING}"
+            printf "%-25s | %-12s | %-20s | %-12s | %-20s\n" "$name" "${status:-WAITING}" "${start:--}" "$F_DURATION" "${msg:--}"
         done
-        echo "--------------------------------------------------------------------------------"
+        echo "----------------------------------------------------------------------------------------------------"
         
         TOTAL=$($DB_QUERY "SELECT count(*) FROM services;")
-        DONE=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='COMPLETED' AND start_time > datetime('now', 'localtime', '-20 hours');")
-        echo "Total: $TOTAL | Done (Last 20h): $DONE"
+        DONE=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='COMPLETED' AND start_time > datetime('now', 'localtime', '-23 hours');")
+        echo "Total: $TOTAL | Done (Last 23h): $DONE"
         exit 0
     fi
 
     # Handle --init argument
     if [[ "$1" == "--init" ]]; then
-        log "Initializing today's job status (20h window)..."
-        # Check if any job is currently RUNNING within 20h
-        RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='RUNNING' AND start_time > datetime('now', 'localtime', '-20 hours');")
+        log "Initializing today's job status (23h window)..."
+        # Check if any job is currently RUNNING within 23h
+        RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='RUNNING' AND start_time > datetime('now', 'localtime', '-23 hours');")
         if [ "$RUNNING_JOBS" -gt 0 ]; then
             log "[Warning] There are $RUNNING_JOBS jobs currently in 'RUNNING' status."
             log "Force initializing anyway..."
         fi
         
-        $DB_QUERY "DELETE FROM jobs WHERE start_time > datetime('now', 'localtime', '-20 hours');"
-        log "Recent job records (last 20h) have been cleared."
+        $DB_QUERY "DELETE FROM jobs WHERE start_time > datetime('now', 'localtime', '-23 hours');"
+        log "Recent job records (last 23h) have been cleared."
         exit 0
     fi
 
@@ -187,7 +187,7 @@ if [[ "$1" != "--no-run" ]]; then
                        AND NOT EXISTS (
                            SELECT 1 FROM jobs j 
                            WHERE j.service_id = s.id 
-                           AND j.start_time > datetime('now', 'localtime', '-20 hours') 
+                           AND j.start_time > datetime('now', 'localtime', '-23 hours') 
                            AND j.status IN ('RUNNING', 'COMPLETED')
                        )
                        ORDER BY s.priority DESC LIMIT 1;"
