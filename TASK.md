@@ -1,5 +1,19 @@
 # Implementation Tasks (TDD & E2E Focused)
 
+## 코딩 원칙: Kent Beck TDD 필수
+
+**모든 코드는 Red → Green → Refactor 순서로 작성한다.**
+
+1. **Red**: 실패하는 테스트를 먼저 작성하고 실행한다
+2. **Green**: 테스트를 통과하는 최소한의 코드를 작성한다  
+3. **Refactor**: 테스트가 통과된 상태에서 코드를 개선한다
+
+테스트 없는 프로덕션 코드 작성은 금지된다.  
+한 번에 하나의 작은 변화(Baby Steps)만 허용된다.
+Phase 추가시에 Task에 **Test** & **E2E** 항목을 반드시 추가해야 한다. 
+
+---
+
 ## Phase 1: Environment & Database Setup
 - [x] **Test**: DB 스키마 생성 및 초기값 입력 테스트 코드 작성
 - [x] 프로젝트 디렉토리 구조 생성 (bin, logs, sql)
