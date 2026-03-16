@@ -108,5 +108,9 @@ Run these games to make sure the helper is working:
 ./tests/test_monitor.sh           # Check the body check tool
 ./tests/test_scheduler_logic.sh   # Check the time and waiting rules
 ./tests/test_status_output.sh     # Check the status reports
-./tests/test_db_stress.sh        # Check if the notebook is safe
+./tests/test_db_init.sh          # Check if the helper can make its first notes
+./tests/test_db_stress.sh        # Check if the notebook is safe when many things happen
+./tests/test_async_concurrency.sh # Check if many boxes can work at the same time
+./tests/test_init_option.sh       # Check if the "start fresh" command works
+./tests/test_service_option.sh    # Check if running one box right away works
 ```
