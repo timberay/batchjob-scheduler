@@ -1,66 +1,58 @@
-# Implementation Tasks (TDD & E2E Focused)
+# Things for the Helper to Do
 
-## 코딩 원칙: Kent Beck TDD 필수
+## Rules for Coding: Be a Good Student!
 
-**모든 코드는 Red → Green → Refactor 순서로 작성한다.**
+**Follow these steps every time you write code:**
 
-1. **Red**: 실패하는 테스트를 먼저 작성하고 실행한다
-2. **Green**: 테스트를 통과하는 최소한의 코드를 작성한다  
-3. **Refactor**: 테스트가 통과된 상태에서 코드를 개선한다
+1. **Wait (Red)**: Write a test that fails first.
+2. **Go (Green)**: Write just enough code to make the test pass.
+3. **Clean Up (Refactor)**: Make the code look nice and tidy while the test still passes.
 
-테스트 없는 프로덕션 코드 작성은 금지된다.  
-한 번에 하나의 작은 변화(Baby Steps)만 허용된다.
-Phase 추가시에 Task에 **Test** & **E2E** 항목을 반드시 추가해야 한다. 
+Never write code without a test! Take tiny "baby steps" one at a time.
 
 ---
 
-## Phase 1: Environment & Database Setup
-- [x] **Test**: DB 스키마 생성 및 초기값 입력 테스트 코드 작성
-- [x] 프로젝트 디렉토리 구조 생성 (bin, logs, sql)
-- [x] SQLite3 데이터베이스 초기화 스크립트 (`init_db.sql`) 작성
-  - [x] `config`, `services`, `jobs` 테이블 생성
-- [x] DB 접근 전용 유틸리티 함수 (`db_query.sh`) 작성
-- [x] **E2E**: DB 초기화 및 기본 쿼리 동작 확인
+## Part 1: Setting up the Home
+- [x] **Test**: Check if the notebook and rules work.
+- [x] Make the folders for the brains and diary.
+- [x] Write the first rules for the notebook.
+- [x] Make a tool to talk to the notebook.
+- [x] **Check**: See if we can read and write in the notebook.
 
-## Phase 2: Resource Monitoring Module
-- [x] **Test**: 모의 데이터 기반 리소스 계산 오류 상황 테스트 (CPU 100%, Disk Full 등)
-- [x] CPU/Memory/Disk/Process 사용율 계산 로직 구현
-- [x] 리소스 체크 통합 함수 작성 (70% 임계치 판단)
-- [x] **E2E**: 실제 시스템 지표 수집 및 임계치 판단 엔진 검증
+## Part 2: Feeling Checks
+- [x] **Test**: Pretend the computer is too tired and see if the helper notices.
+- [x] Teach the helper how to check the brain, memory, and disk.
+- [x] Make a rule to stop if the computer is 70% tired.
+- [x] **Check**: Make sure the helper can feel the computer's body.
 
-## Phase 3: Scheduler Core Logic
-- [x] **Test**: 시간대별(수행시간 내/외) 실행 시나리오 테스트 코드 작성
-- [x] 현재 시간 기반 실행 여부 판단 로직 구현
-- [x] 메인 루프 구현 (5분 주기) 및 서비스 순차 실행 로직
-- [x] **E2E**: 가상 서비스(Docker 컨테이너)를 활용한 전체 스케줄링 흐름 검증
+## Part 3: The Main Helper Brain
+- [x] **Test**: Check if the helper stays awake at night and sleeps during the day.
+- [x] Teach the helper when to work based on the clock.
+- [x] Make the helper keep checking the notebook every 5 minutes.
+- [x] **Check**: See if a fake box can finish its work.
 
-## Phase 4: CLI Interface (`--status`)
-- [x] **Test**: 다양한 DB 상태(진행중, 완료, 실패)에 따른 출력 형식 검증 테스트
-- [x] `--status` 인자 처리 및 요약 출력 기능 구현
-- [x] **E2E**: 실제 스케줄러 구동 중에 별도 세션에서 `--status` 명령 실행 및 결과 정합성 확인
+## Part 4: Talking to Us
+- [x] **Test**: Make sure the helper shows the right report for different stories.
+- [x] Teach the helper how to show its status.
+- [x] **Check**: Ask the helper for its status while it is working.
 
-## Phase 5: Final Verification
-- [x] 전체 시스템 통합 E2E 테스트 (70개 서비스 시뮬레이션)
-- [x] 리소스 고부하 상황에서의 대기 및 재개 메커니즘 최종 검증
-- [x] 예외 상황(DB 잠김, Docker 에러 등) 복구 테스트
+## Part 5: Final Checkup
+- [x] Test everything with many fake boxes at once.
+- [x] Make sure the helper waits if the computer gets very busy.
+- [x] Test what happens if the computer or the notebook has a problem.
 
-## Phase 6: Maintenance & Enhancement
-- [x] **Test**: /proc 기반 프로세스 부하 계산 수식 검증 테스트
-- [x] `/proc/stat` 및 `/proc/loadavg` 기반 프로세스 모니터링 로직 고도화
-- [x] 모니터링 임계치 상세 조정 및 검증
-- [x] **Feature**: 당일 작업 초기화 (`--init`) 옵션 구현
-- [x] **Test**: `--init` 실행 후 스케줄러 재시작 동작 검증
-- [x] **Feature**: 인덱싱 작업 단순 비동기 실행 및 고정 실행 간격(Interval) 보장
-  - [x] 작업 유무에 관계없이 DB에 설정된 `check_interval`만큼 반드시 대기
-  - [x] `run_indexing_task` 백그라운드 실행 (별도 개수 제한 없음)
-- [x] **Stabilization**: SQLite 동시성 최적화 (WAL & Busy Timeout)
-  - [x] `db_query.sh`에 `busy_timeout` 및 `WAL` 모드 적용
-  - [x] 고부하 동시 쓰기 상황(Stress Test) 시나리오 작성
-  - [x] 에러 발생 없을 때까지 반복 테스트 및 검증
+## Part 6: Making It Better
+- [x] **Test**: Check if the helper can count busy programs correctly.
+- [x] Teach the helper more ways to see if the computer is busy.
+- [x] Adjust the rules to make them perfect.
+- [x] **New**: Add a way to start fresh for the day (`--init`).
+- [x] **Test**: Check if starting fresh works.
+- [x] **New**: Make the helper work on many boxes at once but keep waiting properly.
+- [x] **Safety**: Make the notebook even safer so the helper doesn't lose notes.
 
-## Phase 7: Monitoring & UI Enhancement
-- [x] **Test**: 임계치 초과 상황 및 컬럼 매핑 로직 단위 테스트 작성
-- [x] `--status` 출력부 중복 컬럼(`Result`) 제거 및 `Message` 필드 매핑
-- [x] 리소스 임계치 초과 시 다중 원인 및 기준 수치 로그 출력 개선
-- [x] 작업 조회 및 초기화 기간 확장 (20h -> 23h) 일괄 적용
-- [x] **E2E**: 실제 리소스 부하 상황에서의 로그 및 CLI 출력 정합성 검증
+## Part 7: Better Reports
+- [x] **Test**: Check if the reports look nice.
+- [x] Make thestatus report easier to read.
+- [x] Show more details if the computer is too tired.
+- [x] Make the helper remember things for 23 hours.
+- [x] **Check**: Verify the reports match the diary perfectly.
