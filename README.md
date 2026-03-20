@@ -51,13 +51,13 @@ opengrok-scheduler/
 ```bash
 mkdir -p data logs
 sqlite3 data/scheduler.db < sql/init_db.sql
+```
 
 ### 3. Set Your Rules
 Copy the template and edit it with your favorite text editor:
 ```bash
 cp .env.example .env
 vi .env
-```
 ```
 
 ### 3. Add Your Boxes
