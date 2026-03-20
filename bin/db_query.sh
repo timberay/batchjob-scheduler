@@ -13,6 +13,11 @@ fi
 # Use DB_PATH from .env or fallback to default
 DB_PATH="${DB_PATH:-$PROJECT_ROOT/data/scheduler.db}"
 
+# If DB_PATH is relative, prepend PROJECT_ROOT
+if [[ "$DB_PATH" != /* ]]; then
+    DB_PATH="$PROJECT_ROOT/$DB_PATH"
+fi
+
 # Ensure the database is initialized
 if [ ! -f "$DB_PATH" ]; then
     echo "[Error] Database not found at $DB_PATH" >&2

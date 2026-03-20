@@ -15,6 +15,12 @@ fi
 source "$PROJECT_ROOT/bin/monitor.sh"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
+
+# If LOG_DIR is relative, prepend PROJECT_ROOT
+if [[ "$LOG_DIR" != /* ]]; then
+    LOG_DIR="$PROJECT_ROOT/$LOG_DIR"
+fi
+
 mkdir -p "$LOG_DIR"
 
 # Function to check if current time is within range
@@ -72,15 +78,15 @@ run_indexing_task() {
     local START_SEC=$(date +%s)
     
     # ----------------------------------------------------------------------
-    # [MODIFY] 아래 구간에 실제 인덱싱 명령어를 입력하세요.
-    # 예: docker exec "$CONTAINER_NAME" /usr/local/bin/indexer
+    # [MODIFY] Enter the actual indexing command in the section below.
+    # e.g. docker exec "$CONTAINER_NAME" /usr/local/bin/indexer
     # ----------------------------------------------------------------------
     
-    # 실제 명령 실행 (테스트를 위해 sleep 2 유지, 실제 연동 시 아래 라인 교체)
+    # Actual command execution (keep sleep 2 for testing, replace this line for actual integration)
     # docker exec "$CONTAINER_NAME" /usr/local/bin/indexer 
     sleep 2 
     
-    # 실행 결과 코드 캡처
+    # Capture the exit code
     local EXIT_CODE=$? 
     
     # ----------------------------------------------------------------------
@@ -108,7 +114,7 @@ if [[ "$1" != "--no-run" ]]; then
         printf "%-25s | %-12s | %-20s | %-12s | %-20s\n" "Service Name" "Status" "Start Time" "Duration" "Message"
         echo "----------------------------------------------------------------------------------------------------"
         
-        # Query 결과를 최근 23시간 기준으로 필터링
+        # Filter query results based on the last 23 hours
         QUERY="SELECT s.container_name, j.status, j.start_time, j.duration, j.message 
                FROM services s 
                LEFT JOIN jobs j ON s.id = j.service_id 

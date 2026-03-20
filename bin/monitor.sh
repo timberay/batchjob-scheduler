@@ -23,7 +23,7 @@ get_cpu_usage() {
 
 # Memory Usage calculated via 'free -m' (using 'available' for actual pressure)
 get_mem_usage() {
-    # NR==2 to avoid locale issues (Mem: or 메모리:)
+    # NR==2 to avoid locale issues (Mem: or Memory:)
     local MEM_INFO=$(free -m | awk 'NR==2')
     local TOTAL=$(echo "$MEM_INFO" | awk '{print $2}')
     local AVAIL=$(echo "$MEM_INFO" | awk '{print $7}')
