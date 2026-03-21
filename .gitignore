@@ -19,3 +19,6 @@ tmp/
 .claude/
 AGENTS.md
 CLAUDE.md
+.env
+data/
+logs/

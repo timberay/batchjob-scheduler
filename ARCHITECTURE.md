@@ -44,7 +44,8 @@ This is the list of boxes to work on.
 This is where the helper writes down what happened.
 - `id`: Row number
 - `service_id`: Which box was working
-- `status`: How it's doing ('WAITING', 'RUNNING', 'COMPLETED', 'FAILED')
+- `pid`: The ID of the process working in the background
+- `process_state`: The live status of the process (e.g. 'RUNNING', 'SLEEPING')
 - `start_time`: When it started
 - `end_time`: When it finished
 - `duration`: How many seconds it took
@@ -54,8 +55,9 @@ This is where the helper writes down what happened.
 
 ### 5.1 The Main Loop
 1. Read the rules from the `.env` file.
-2. Check the clock. Is it time to work? If not, wait and check again.
-3. Check the computer's body. If any measurement is too high (above the limit), wait.
+2. Run `migrate_db.sh` to make sure the notebook has all the right columns.
+3. Check the clock. Is it time to work? If not, wait and check again.
+4. Check the computer's body. If any measurement is too high (above the limit), wait.
 4. Look for the next box that needs help (not worked in the last 23 hours).
     - It picks the box that usually takes the most time first (Longest Job First).
 5. Start the work and update the notebook when finished.

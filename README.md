@@ -7,15 +7,17 @@ This is a Bash-based helper that organizes indexing for more than 70 OpenGrok se
 - **Time-Based Work**: It only works during the hours you set (like 18:00 to 06:00).
 - **Easy Settings**: It reads the rules from a simple `.env` file, so it's easy to change rules for different servers.
 - **Body Check (Resource Monitoring)**: 
-  - **Brain (CPU)**: It checks how hard the brain is working right now.
-  - **Thinking Space (Memory)**: It looks at the real space left for thinking (available memory).
-  - **Internet (Network)**: It detects the speed and checks how much is being used.
-  - **Disk I/O**: It checks if the computer is busy reading or writing books (files).
-- **Process Usage**: it counts how many other programs are running or waiting.
+  - **Brain (CPU)**: It checks how hard the brain is working right now (CPU Usage, Load Average, and I/O Wait).
+  - **Thinking Space (Memory)**: It looks at the real space left for thinking (Available Memory and Swap Usage).
+  - **Internet (Network)**: It detects the speed and checks how much is being used across all physical interfaces.
+  - **Disk & Inodes**: It checks if the disks are busy or running out of indexing space (Disk Usage, Disk I/O, and Inode Usage) for all local partitions automatically.
+- **Dynamic Process Tracking**: It tracks the live status of each indexing task (like Running, Sleeping, or Disk Wait) and automatically cleans up finished or stuck tasks (Zombie reaping).
+- **Process Usage**: It counts how many other programs are running or waiting.
 - **Notebook Management (SQLite3)**: It keeps the list of boxes, rules, and history in a small notebook file.
 - **Background Work**: It can start indexing tasks in the background so it can do more than one thing at a time.
 - **Fixed Checking Time**: It follows a strict schedule (like every 5 minutes) to scan for new tasks.
 - **Safe Notebook**: It uses special tricks (WAL and Busy Timeout) so many programs can talk to the notebook at the same time without problems.
+- **Automatic Schema Updates**: It automatically fixes the notebook layout (adds missing columns) every time it starts, so you don't have to worry about manual updates.
 - **Status Reports**: Use the `--status` command to see a summary of what has been done.
 - **Independent Checking**: You can check the status even while the helper is working in the background.
 
@@ -26,7 +28,8 @@ opengrok-scheduler/
 ├── bin/
 │   ├── scheduler.sh    # The main brain and command center
 │   ├── monitor.sh      # The body check tool
-│   └── db_query.sh     # The tool for talking to the notebook
+│   ├── db_query.sh     # The tool for talking to the notebook
+│   └── migrate_db.sh   # The tool for updating the notebook layout
 ├── sql/
 │   └── init_db.sql     # The original layout for the notebook
 ├── data/
@@ -82,7 +85,7 @@ If you want to start one box right away, no matter what time it is:
 ```
 
 ### Check the Status (--status)
-See a summary of what the helper is doing:
+See a summary of what the helper is doing, including the real-time process state (like RUNNING, SLEEPING, or DISK_WAIT):
 ```bash
 ./bin/scheduler.sh --status
 ```
@@ -104,9 +107,12 @@ You can change rules in the `.env` file. The helper reads this file every time i
 | `END_TIME` | When work ends | `06:00` |
 | `RESOURCE_THRESHOLD` | How busy the computer can be (%) | `70` |
 | `CHECK_INTERVAL` | How long to wait between checks (seconds) | `300` |
-| `NET_INTERFACE` | Which internet pipe to watch (Optional) | auto-detected |
-| `MAX_BANDWIDTH` | Max speed of the internet (Optional) | auto-detected |
-| `DISK_DEVICE` | Which disk to watch (Optional) | auto-detected |
+| `IOWAIT_THRESHOLD` | Max allowed I/O Wait (%) | `20` |
+| `SWAP_THRESHOLD` | Max allowed Swap usage (%) | `50` |
+| `INODE_THRESHOLD` | Max allowed Inode usage (%) | `90` |
+| `NET_INTERFACE` | Which internet pipe to watch | auto-detected (All) |
+| `MAX_BANDWIDTH` | Max speed of the internet | auto-detected |
+| `DISK_DEVICE` | Which disk to watch | auto-detected (All) |
 
 ```bash
 # Example: Change the limit to 80%

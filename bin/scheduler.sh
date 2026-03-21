@@ -4,11 +4,16 @@
 # OpenGrok Index Scheduler Main Script
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Load .env if it exists
+# Load .env if it exists (preserve existing environment variables)
 if [ -f "$PROJECT_ROOT/.env" ]; then
-    # Use set -a to export all variables from .env automatically
     set -a
+    # Save current env values that .env might override
+    _OLD_DB_PATH="$DB_PATH"
+    _OLD_LOG_DIR="$LOG_DIR"
     source "$PROJECT_ROOT/.env"
+    # Restore if they were already set in the environment
+    [ -n "$_OLD_DB_PATH" ] && DB_PATH="$_OLD_DB_PATH"
+    [ -n "$_OLD_LOG_DIR" ] && LOG_DIR="$_OLD_LOG_DIR"
     set +a
 fi
 
@@ -110,23 +115,23 @@ if [[ "$1" != "--no-run" ]]; then
     # Handle --status argument
     if [[ "$1" == "--status" ]]; then
         echo "[OpenGrok Indexing Summary]"
-        echo "----------------------------------------------------------------------------------------------------"
-        printf "%-25s | %-12s | %-20s | %-12s | %-20s\n" "Service Name" "Status" "Start Time" "Duration" "Message"
-        echo "----------------------------------------------------------------------------------------------------"
+        echo "-------------------------------------------------------------------------------------------------------------"
+        printf "%-25s | %-12s | %-10s | %-20s | %-12s | %-20s\n" "Service Name" "Status" "Process" "Start Time" "Duration" "Message"
+        echo "-------------------------------------------------------------------------------------------------------------"
         
         # Filter query results based on the last 23 hours
-        QUERY="SELECT s.container_name, j.status, j.start_time, j.duration, j.message 
+        QUERY="SELECT s.container_name, j.status, COALESCE(j.process_state, '-'), j.start_time, j.duration, j.message 
                FROM services s 
                LEFT JOIN jobs j ON s.id = j.service_id 
                WHERE (j.start_time > datetime('now', 'localtime', '-23 hours') OR j.start_time IS NULL)
                ORDER BY j.start_time DESC LIMIT 50;"
         
-        $DB_QUERY "$QUERY" | while IFS='|' read -r name status start duration msg; do
+        $DB_QUERY "$QUERY" | while IFS='|' read -r name status proc_state start duration msg; do
             [[ -z "$name" ]] && continue
             F_DURATION=$(format_duration "$duration")
-            printf "%-25s | %-12s | %-20s | %-12s | %-20s\n" "$name" "${status:-WAITING}" "${start:--}" "$F_DURATION" "${msg:--}"
+            printf "%-25s | %-12s | %-10s | %-20s | %-12s | %-20s\n" "$name" "${status:-WAITING}" "$proc_state" "${start:--}" "$F_DURATION" "${msg:--}"
         done
-        echo "----------------------------------------------------------------------------------------------------"
+        echo "-------------------------------------------------------------------------------------------------------------"
         
         TOTAL=$($DB_QUERY "SELECT count(*) FROM services;")
         DONE=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='COMPLETED' AND start_time > datetime('now', 'localtime', '-23 hours');")
@@ -173,7 +178,56 @@ if [[ "$1" != "--no-run" ]]; then
 
     log "OpenGrok Scheduler Started."
     
+    # Run Database Migration (ensure schema is up-to-date)
+    "$PROJECT_ROOT/bin/migrate_db.sh"
+    
+    # PID Tracking and State Management
+    declare -A BG_PIDS       # KEY=CONTAINER_NAME, VALUE=PID
+    declare -A BG_PREV_STATE  # KEY=CONTAINER_NAME, VALUE=last known state
+
+    reap_bg_processes() {
+        for CNAME in "${!BG_PIDS[@]}"; do
+            local PID=${BG_PIDS[$CNAME]}
+            local STATE=$(get_process_state "$PID")
+            local PREV=${BG_PREV_STATE[$CNAME]:-""}
+
+            # Update DB only when state changes
+            if [ "$STATE" != "$PREV" ]; then
+                $DB_QUERY "UPDATE jobs SET process_state='$STATE' WHERE pid=$PID AND status='RUNNING';"
+                BG_PREV_STATE["$CNAME"]="$STATE"
+            fi
+
+            case "$STATE" in
+                EXITED)
+                    wait "$PID" 2>/dev/null
+                    log "Process finished: $CNAME (PID=$PID)"
+                    unset BG_PIDS["$CNAME"]
+                    unset BG_PREV_STATE["$CNAME"]
+                    ;;
+                ZOMBIE)
+                    wait "$PID" 2>/dev/null
+                    log "[Warning] Zombie reaped: $CNAME (PID=$PID)"
+                    $DB_QUERY "UPDATE jobs SET process_state='ZOMBIE' WHERE pid=$PID AND status='RUNNING';"
+                    unset BG_PIDS["$CNAME"]
+                    unset BG_PREV_STATE["$CNAME"]
+                    ;;
+                STOPPED)
+                    log "[Warning] Process stopped: $CNAME (PID=$PID)"
+                    ;;
+                DISK_WAIT)
+                    log "[Warning] Process in uninterruptible I/O: $CNAME (PID=$PID)"
+                    ;;
+            esac
+        done
+    }
+
+    # Clean up stale RUNNING records from previous crash
+    $DB_QUERY "UPDATE jobs SET process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
+    log "Stale process states reset to UNKNOWN."
+    
     while true; do
+        reap_bg_processes
+
         # 1. Load Config (Use environment variables with defaults)
         START=${START_TIME:-18:00}
         END=${END_TIME:-06:00}
@@ -187,12 +241,16 @@ if [[ "$1" != "--no-run" ]]; then
             # 3. Check Resources
             CPU=$(get_cpu_usage)
             MEM=$(get_mem_usage)
-            DISK=$(get_disk_usage "/")
+            DISK=$(get_disk_usage)
             DISKIO=$(get_diskio_usage)
             NET=$(get_bandwidth_usage)
             PROC=$(get_proc_usage)
+            LOAD=$(get_cpu_load_average)
+            IOWAIT=$(get_iowait)
+            SWAP=$(get_swap_usage)
+            INODE=$(get_inode_usage)
             
-            if ! check_thresholds "$CPU" "$MEM" "$DISK" "$DISKIO" "$NET" "$PROC" "$THRESHOLD"; then
+            if ! check_thresholds "$CPU" "$MEM" "$DISK" "$DISKIO" "$NET" "$PROC" "$LOAD" "$IOWAIT" "$SWAP" "$INODE" "$THRESHOLD"; then
                 log "Resource limit exceeded: $LAST_BYPASS_REASON. Waiting..."
             else
                 # 4. Get Next Job (Exclude services already RUNNING or COMPLETED today)
@@ -225,6 +283,11 @@ if [[ "$1" != "--no-run" ]]; then
                     else
                         # 6. Execute Job (Simple Background)
                         run_indexing_task "$NEXT_SERVICE_ID" "$CONTAINER_NAME" &
+                        BG_PIDS["$CONTAINER_NAME"]=$!
+                        BG_PREV_STATE["$CONTAINER_NAME"]="RUNNING"
+                        # Update DB with PID immediately
+                        $DB_QUERY "UPDATE jobs SET pid=${BG_PIDS[$CNAME]}, process_state='RUNNING' WHERE service_id=$NEXT_SERVICE_ID AND status='RUNNING' ORDER BY id DESC LIMIT 1;"
+                        log "Background PID=${BG_PIDS[$CONTAINER_NAME]} started for $CONTAINER_NAME"
                     fi
                 fi
             fi

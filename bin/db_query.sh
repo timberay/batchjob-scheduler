@@ -5,9 +5,13 @@
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Load .env if it exists
+# Load .env if it exists (preserve existing environment variables)
 if [ -f "$PROJECT_ROOT/.env" ]; then
+    _OLD_DB_PATH="$DB_PATH"
+    _OLD_LOG_DIR="$LOG_DIR"
     source "$PROJECT_ROOT/.env"
+    [ -n "$_OLD_DB_PATH" ] && DB_PATH="$_OLD_DB_PATH"
+    [ -n "$_OLD_LOG_DIR" ] && LOG_DIR="$_OLD_LOG_DIR"
 fi
 
 # Use DB_PATH from .env or fallback to default

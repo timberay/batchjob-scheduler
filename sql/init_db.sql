@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     service_id INTEGER NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('WAITING', 'RUNNING', 'COMPLETED', 'FAILED')),
+    pid INTEGER,
+    process_state TEXT DEFAULT 'UNKNOWN',
     start_time DATETIME,
     end_time DATETIME,
     duration INTEGER,
