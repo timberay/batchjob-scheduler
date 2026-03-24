@@ -253,7 +253,7 @@ if [[ "$1" != "--no-run" ]]; then
                        AND j.start_time > datetime('now', 'localtime', '-23 hours') 
                        AND j.status IN ('RUNNING', 'COMPLETED')
                    )
-                   ORDER BY COALESCE(j_stats.avg_duration, -1) DESC, s.container_name ASC 
+                   ORDER BY s.priority DESC, COALESCE(j_stats.avg_duration, -1) DESC, s.container_name ASC 
                    LIMIT 1;"
             NEXT_SERVICE_ID=$($DB_QUERY "$QUERY")
             
