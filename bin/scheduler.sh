@@ -20,6 +20,8 @@ fi
 source "$PROJECT_ROOT/bin/monitor.sh"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
+JOB_IDLE_TIMEOUT="${JOB_IDLE_TIMEOUT:-300}"
+export JOB_IDLE_TIMEOUT
 
 # If LOG_DIR is relative, prepend PROJECT_ROOT
 if [[ "$LOG_DIR" != /* ]]; then
@@ -71,6 +73,18 @@ format_duration() {
     printf "%dh %dm %ds" "$H" "$M" "$S"
 }
 
+# Get total CPU time (user + system) for a process from /proc/<PID>/stat
+# Returns the sum in clock ticks; if process doesn't exist, returns "0"
+get_process_cputime() {
+    local PID=$1
+    if [ ! -f "/proc/$PID/stat" ]; then
+        echo "0"
+        return
+    fi
+    # Fields 14 (utime) + 15 (stime) in /proc/<PID>/stat
+    awk '{print $14 + $15}' "/proc/$PID/stat" 2>/dev/null || echo "0"
+}
+
 # Function to execute indexing task and update DB
 run_indexing_task() {
     local SERVICE_ID=$1
@@ -81,15 +95,45 @@ run_indexing_task() {
     local JOB_ID=$($DB_QUERY "INSERT INTO jobs (service_id, status, start_time) VALUES ($SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid();")
     
     local START_SEC=$(date +%s)
+    # Use global/env value if set, otherwise default 300
+    local IDLE_LIMIT=${JOB_IDLE_TIMEOUT:-300}
     
     # ----------------------------------------------------------------------
     # [MODIFY] Enter the actual indexing command in the section below.
     # e.g. docker exec "$CONTAINER_NAME" /usr/local/bin/indexer
     # ----------------------------------------------------------------------
     
-    # Actual command execution (keep sleep 2 for testing, replace this line for actual integration)
-    # docker exec "$CONTAINER_NAME" /usr/local/bin/indexer 
-    sleep 2 
+    # Actual command execution (Keep stdin isolated, run in subshell to monitor)
+    (
+        exec < /dev/null 2>&1
+        # docker exec "$CONTAINER_NAME" /usr/local/bin/indexer 
+        sleep 2
+    ) &
+    local CMD_PID=$!
+
+    # Monitor for idle timeout (CPU time not advancing = idle)
+    local PREV_CPUTIME=$(get_process_cputime "$CMD_PID")
+    local IDLE_ELAPSED=0
+
+    while kill -0 "$CMD_PID" 2>/dev/null; do
+        sleep 10
+        local CURR_CPUTIME=$(get_process_cputime "$CMD_PID")
+        if [ "$CURR_CPUTIME" = "$PREV_CPUTIME" ]; then
+            IDLE_ELAPSED=$((IDLE_ELAPSED + 10))
+            if [ "$IDLE_ELAPSED" -ge "$IDLE_LIMIT" ]; then
+                log "[Warning] Idle timeout: $CONTAINER_NAME (PID=$CMD_PID) no CPU activity for ${IDLE_ELAPSED}s. Killing..."
+                kill -TERM "$CMD_PID" 2>/dev/null
+                sleep 5
+                kill -9 "$CMD_PID" 2>/dev/null
+                break
+            fi
+        else
+            IDLE_ELAPSED=0  # Reset: process is actively working
+            PREV_CPUTIME="$CURR_CPUTIME"
+        fi
+    done
+
+    wait "$CMD_PID" 2>/dev/null
     
     # Capture the exit code
     local EXIT_CODE=$? 
@@ -99,6 +143,13 @@ run_indexing_task() {
     local END_SEC=$(date +%s)
     local DURATION=$((END_SEC - START_SEC))
     
+    # Handle idle timeout khusus
+    if [ "$IDLE_ELAPSED" -ge "$IDLE_LIMIT" ]; then
+        $DB_QUERY "UPDATE jobs SET status='TIMEOUT', end_time=datetime('now', 'localtime'), duration=$DURATION, message='Idle ${IDLE_ELAPSED}s (limit: ${IDLE_LIMIT}s)' WHERE id=$JOB_ID;"
+        log "[Warning] Indexing $CONTAINER_NAME idle-timed out after ${IDLE_ELAPSED}s."
+        return 1
+    fi
+
     if [ "$EXIT_CODE" -eq 0 ]; then
         $DB_QUERY "UPDATE jobs SET status='COMPLETED', end_time=datetime('now', 'localtime'), duration=$DURATION WHERE id=$JOB_ID;"
         log "Indexing $CONTAINER_NAME completed successfully."
@@ -212,10 +263,13 @@ if [[ "$1" != "--no-run" ]]; then
                     unset BG_PREV_STATE["$CNAME"]
                     ;;
                 STOPPED)
-                    log "[Warning] Process stopped: $CNAME (PID=$PID)"
+                    log "[Warning] Process stopped: $CNAME (PID=$PID). Sending SIGCONT then SIGTERM..."
+                    kill -CONT "$PID" 2>/dev/null
+                    sleep 2
+                    kill -TERM "$PID" 2>/dev/null
                     ;;
                 DISK_WAIT)
-                    log "[Warning] Process in uninterruptible I/O: $CNAME (PID=$PID)"
+                    log "[Warning] Process in uninterruptible I/O: $CNAME (PID=$PID). Will retry on next reap cycle."
                     ;;
             esac
         done
@@ -227,6 +281,19 @@ if [[ "$1" != "--no-run" ]]; then
     
     while true; do
         reap_bg_processes
+
+        # 0. Auto-expire stale RUNNING jobs (no activity for 2x idle timeout)
+        STALE_LIMIT=$((${JOB_IDLE_TIMEOUT:-300} * 2))
+        STALE_JOBS=$($DB_QUERY "SELECT j.id, j.pid, s.container_name FROM jobs j JOIN services s ON j.service_id=s.id WHERE j.status='RUNNING' AND j.start_time < datetime('now', 'localtime', '-${STALE_LIMIT} seconds');")
+        if [ -n "$STALE_JOBS" ]; then
+            echo "$STALE_JOBS" | while IFS='|' read -r JID JPID JCNAME; do
+                log "[Warning] Expiring stale job id=$JID ($JCNAME, PID=$JPID)."
+                [ -n "$JPID" ] && kill -TERM "$JPID" 2>/dev/null
+                $DB_QUERY "UPDATE jobs SET status='TIMEOUT', end_time=datetime('now', 'localtime'), message='Stale auto-expired' WHERE id=$JID;"
+                unset BG_PIDS["$JCNAME"] 2>/dev/null
+                unset BG_PREV_STATE["$JCNAME"] 2>/dev/null
+            done
+        fi
 
         # 1. Load Config (Use environment variables with defaults)
         START=${START_TIME:-18:00}
