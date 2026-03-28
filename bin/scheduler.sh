@@ -251,7 +251,13 @@ if [[ "$1" != "--no-run" ]]; then
             case "$STATE" in
                 EXITED)
                     wait "$PID" 2>/dev/null
-                    log "Process finished: $CNAME (PID=$PID)"
+                    local REAP_EXIT=$?
+                    log "Process finished: $CNAME (PID=$PID, exit=$REAP_EXIT)"
+                    if [ "$REAP_EXIT" -eq 0 ]; then
+                        $DB_QUERY "UPDATE jobs SET status='COMPLETED', process_state='EXITED', end_time=datetime('now', 'localtime') WHERE pid=$PID AND status='RUNNING';"
+                    else
+                        $DB_QUERY "UPDATE jobs SET status='FAILED', process_state='EXITED', end_time=datetime('now', 'localtime'), message='Exit code $REAP_EXIT' WHERE pid=$PID AND status='RUNNING';"
+                    fi
                     unset BG_PIDS["$CNAME"]
                     unset BG_PREV_STATE["$CNAME"]
                     ;;
@@ -276,15 +282,15 @@ if [[ "$1" != "--no-run" ]]; then
     }
 
     # Clean up stale RUNNING records from previous crash
-    $DB_QUERY "UPDATE jobs SET process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
-    log "Stale process states reset to UNKNOWN."
+    $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
+    log "Stale RUNNING jobs marked as ORPHANED (PID unverifiable after restart)."
     
     while true; do
         reap_bg_processes
 
         # 0. Auto-expire stale RUNNING jobs (no activity for 2x idle timeout)
         STALE_LIMIT=$((${JOB_IDLE_TIMEOUT:-300} * 2))
-        STALE_JOBS=$($DB_QUERY "SELECT j.id, j.pid, s.container_name FROM jobs j JOIN services s ON j.service_id=s.id WHERE j.status='RUNNING' AND j.start_time < datetime('now', 'localtime', '-${STALE_LIMIT} seconds');")
+        STALE_JOBS=$($DB_QUERY "SELECT j.id, j.pid, s.container_name FROM jobs j JOIN services s ON j.service_id=s.id WHERE j.status IN ('RUNNING', 'ORPHANED') AND j.start_time < datetime('now', 'localtime', '-${STALE_LIMIT} seconds');")
         if [ -n "$STALE_JOBS" ]; then
             echo "$STALE_JOBS" | while IFS='|' read -r JID JPID JCNAME; do
                 log "[Warning] Expiring stale job id=$JID ($JCNAME, PID=$JPID)."
@@ -318,7 +324,7 @@ if [[ "$1" != "--no-run" ]]; then
                        SELECT 1 FROM jobs j 
                        WHERE j.service_id = s.id 
                        AND j.start_time > datetime('now', 'localtime', '-23 hours') 
-                       AND j.status IN ('RUNNING', 'COMPLETED')
+                       AND j.status IN ('RUNNING', 'COMPLETED', 'ORPHANED')
                    )
                    ORDER BY s.priority DESC, COALESCE(j_stats.avg_duration, -1) DESC, s.container_name ASC 
                    LIMIT 1;"
