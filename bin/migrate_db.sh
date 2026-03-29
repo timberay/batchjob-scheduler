@@ -4,24 +4,7 @@
 # SQLite3 Schema Migration Utility
 # This script ensures the database schema is up-to-date by adding missing columns.
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Load .env if it exists (preserve existing environment variables)
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    # Use a temporary subshell to source and only set if not already set
-    # Or more simply, just check if DB_PATH is already set before and after
-    _TMP_DB_PATH="$DB_PATH"
-    source "$PROJECT_ROOT/.env"
-    [ -n "$_TMP_DB_PATH" ] && DB_PATH="$_TMP_DB_PATH"
-fi
-
-# Use DB_PATH from .env or fallback to default
-DB_PATH="${DB_PATH:-$PROJECT_ROOT/data/scheduler.db}"
-
-# If DB_PATH is relative, prepend PROJECT_ROOT
-if [[ "$DB_PATH" != /* ]]; then
-    DB_PATH="$PROJECT_ROOT/$DB_PATH"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Ensure database exists
 if [ ! -f "$DB_PATH" ]; then
@@ -60,7 +43,11 @@ add_column_if_missing "services" "is_active" "INTEGER DEFAULT 1"
 add_column_if_missing "jobs" "pid" "INTEGER"
 add_column_if_missing "jobs" "process_state" "TEXT DEFAULT 'UNKNOWN'"
 
-# 3. Jobs Table Status Constraint Migration (Requires table recreation in SQLite)
+# 3. Heartbeat Table Migration
+echo "[Migration] Ensuring heartbeat table exists..."
+sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS heartbeat (id INTEGER PRIMARY KEY, last_pulse DATETIME);"
+
+# 4. Jobs Table Status Constraint Migration (Requires table recreation in SQLite)
 check_and_update_status_constraint() {
     local SCHEMA=$(sqlite3 "$DB_PATH" ".schema jobs")
     if ! echo "$SCHEMA" | grep -q "ORPHANED" || ! echo "$SCHEMA" | grep -q "TIMEOUT"; then

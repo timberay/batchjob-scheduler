@@ -3,23 +3,10 @@
 # bin/scheduler.sh
 # Batch Job Scheduler Main Script
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Load .env if it exists (preserve existing environment variables)
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    # Save current env values that .env might override
-    _OLD_DB_PATH="$DB_PATH"
-    _OLD_LOG_DIR="$LOG_DIR"
-    source "$PROJECT_ROOT/.env"
-    # Restore if they were already set in the environment
-    [ -n "$_OLD_DB_PATH" ] && DB_PATH="$_OLD_DB_PATH"
-    [ -n "$_OLD_LOG_DIR" ] && LOG_DIR="$_OLD_LOG_DIR"
-    set +a
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 source "$PROJECT_ROOT/bin/monitor.sh"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
-LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
 JOB_IDLE_TIMEOUT="${JOB_IDLE_TIMEOUT:-300}"
 export JOB_IDLE_TIMEOUT
 
@@ -89,10 +76,17 @@ get_process_cputime() {
 run_indexing_task() {
     local SERVICE_ID=$1
     local CONTAINER_NAME=$2
+    
+    validate_integer "$SERVICE_ID" || return 1
+    validate_name "$CONTAINER_NAME" || return 1
 
-    log "Starting batch job for $CONTAINER_NAME..."
-    # Insert and get ID in the same session
-    local JOB_ID=$($DB_QUERY "INSERT INTO jobs (service_id, status, start_time) VALUES ($SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid();")
+    # Insert and get ID in the same session with atomic transaction
+    local JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; INSERT INTO jobs (service_id, status, start_time) VALUES ($SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid(); COMMIT;")
+    
+    if [ $? -ne 0 ] || [ -z "$JOB_ID" ]; then
+        log "[Error] Failed to create job record in database for $CONTAINER_NAME. Skipping..."
+        return 1
+    fi
     
     local START_SEC=$(date +%s)
     # Use global/env value if set, otherwise default 300
@@ -192,16 +186,16 @@ if [[ "$1" != "--no-run" ]]; then
 
     # Handle --init argument
     if [[ "$1" == "--init" ]]; then
-        log "Initializing today's job status (23h window)..."
-        # Check if any job is currently RUNNING within 23h
-        RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='RUNNING' AND start_time > datetime('now', 'localtime', '-23 hours');")
+        log "Initializing all job records..."
+        # Check if any job is currently RUNNING
+        RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='RUNNING';")
         if [ "$RUNNING_JOBS" -gt 0 ]; then
             log "[Warning] There are $RUNNING_JOBS jobs currently in 'RUNNING' status."
             log "Force initializing anyway..."
         fi
         
-        $DB_QUERY "DELETE FROM jobs WHERE start_time > datetime('now', 'localtime', '-23 hours');"
-        log "Recent job records (last 23h) have been cleared."
+        $DB_QUERY "DELETE FROM jobs;"
+        log "All job records have been cleared."
         exit 0
     fi
 
@@ -212,6 +206,8 @@ if [[ "$1" != "--no-run" ]]; then
             echo "[Error] Please provide a container name. Usage: $0 --service <container_name>"
             exit 1
         fi
+        
+        validate_name "$TARGET_CONTAINER" || exit 1
         
         SERVICE_INFO=$($DB_QUERY "SELECT id, container_name FROM services WHERE container_name='$TARGET_CONTAINER';")
         if [ -z "$SERVICE_INFO" ]; then
@@ -228,6 +224,11 @@ if [[ "$1" != "--no-run" ]]; then
     fi
 
     log "Batch Job Scheduler Started."
+    
+    # Automatic Log Cleanup (Keep last N days)
+    LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
+    find "$LOG_DIR" -name "*.log" -mtime +"$LOG_RETENTION_DAYS" -delete 2>/dev/null
+    log "Cleaned up logs older than ${LOG_RETENTION_DAYS} days."
     
     # Run Database Migration (ensure schema is up-to-date)
     "$PROJECT_ROOT/bin/migrate_db.sh"
@@ -286,19 +287,22 @@ if [[ "$1" != "--no-run" ]]; then
     log "Stale RUNNING jobs marked as ORPHANED (PID unverifiable after restart)."
     
     while true; do
+        # 0. Update Heartbeat (Signal liveness)
+        $DB_QUERY "REPLACE INTO heartbeat (id, last_pulse) VALUES (1, datetime('now', 'localtime'));"
+        
         reap_bg_processes
 
         # 0. Auto-expire stale RUNNING jobs (no activity for 2x idle timeout)
         STALE_LIMIT=$((${JOB_IDLE_TIMEOUT:-300} * 2))
         STALE_JOBS=$($DB_QUERY "SELECT j.id, j.pid, s.container_name FROM jobs j JOIN services s ON j.service_id=s.id WHERE j.status IN ('RUNNING', 'ORPHANED') AND j.start_time < datetime('now', 'localtime', '-${STALE_LIMIT} seconds');")
         if [ -n "$STALE_JOBS" ]; then
-            echo "$STALE_JOBS" | while IFS='|' read -r JID JPID JCNAME; do
+            while IFS='|' read -r JID JPID JCNAME; do
                 log "[Warning] Expiring stale job id=$JID ($JCNAME, PID=$JPID)."
                 [ -n "$JPID" ] && kill -TERM "$JPID" 2>/dev/null
                 $DB_QUERY "UPDATE jobs SET status='TIMEOUT', end_time=datetime('now', 'localtime'), message='Stale auto-expired' WHERE id=$JID;"
                 unset BG_PIDS["$JCNAME"] 2>/dev/null
                 unset BG_PREV_STATE["$JCNAME"] 2>/dev/null
-            done
+            done <<< "$STALE_JOBS"
         fi
 
         # 1. Load Config (Use environment variables with defaults)
@@ -329,6 +333,11 @@ if [[ "$1" != "--no-run" ]]; then
                    ORDER BY s.priority DESC, COALESCE(j_stats.avg_duration, -1) DESC, s.container_name ASC 
                    LIMIT 1;"
             NEXT_SERVICE_ID=$($DB_QUERY "$QUERY")
+            if [ $? -ne 0 ]; then
+                log "[Error] Database query failed while fetching next service. Retrying in 30s..."
+                sleep 30
+                continue
+            fi
             
             if [ -z "$NEXT_SERVICE_ID" ]; then
                 log "All tasks completed for today. Waiting..."
@@ -351,7 +360,7 @@ if [[ "$1" != "--no-run" ]]; then
                     log "Resource limit exceeded: $LAST_BYPASS_REASON. Container '$CONTAINER_NAME' is waiting..."
                 else
                     # 5. Double Check: Is there already a process running for this container?
-                    if ps -elf | grep -v grep | grep "run_indexing_task" | grep -q "$CONTAINER_NAME"; then
+                    if [[ -n "${BG_PIDS[$CONTAINER_NAME]}" ]] && kill -0 "${BG_PIDS[$CONTAINER_NAME]}" 2>/dev/null; then
                         log "Process check skip: $CONTAINER_NAME is already being indexed. Skipping..."
                     else
                         # 6. Execute Job (Simple Background)

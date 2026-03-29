@@ -39,6 +39,7 @@ This is the list of boxes to work on.
 - `container_name`: The name of the box
 - `priority`: How important this box is (higher number means it goes sooner)
 - `is_active`: Is this box ready to work? (1: Yes, 0: No)
+- `last_heartbeat`: (in heartbeat table) When the scheduler last pulsed
 
 ### 4.3 Work Table (`jobs`)
 This is where the helper writes down what happened.
@@ -58,9 +59,10 @@ This is where the helper writes down what happened.
 2. Run `migrate_db.sh` to make sure the notebook has all the right columns.
 3. Check the clock. Is it time to work? If not, wait and check again.
 4. Check the computer's body. If any measurement is too high (above the limit), wait.
-4. Look for the next box that needs help (not worked in the last 23 hours).
-    - It picks the box that usually takes the most time first (Longest Job First).
-5. Start the work and update the notebook when finished.
+5. Look for the next box that needs help (not yet completed today).
+    - **Priority First**: It picks boxes with higher priority first.
+    - **Longest Job First**: For the same priority, it picks the box that usually takes the most time first (to finish big tasks sooner).
+6. Start the work and update the notebook when finished.
 
 ### 5.2 Measuring Details
 - **Brain (CPU)**: Checks the "idle" time to see how busy the brain is right now.
@@ -74,7 +76,7 @@ This is where the helper writes down what happened.
 ### 6.1 Status Command
 You can ask for a report anytime.
 - It shows each box's status, start time, how long it took, and the result.
-- It shows how many boxes are finished out of the total for the last 23 hours.
+- It shows how many boxes are finished out of the total for the current session or day.
 
 ## 7. Being Careful (Exception Handling)
 - **Different Languages**: The helper understands computer measurements even if the computer speaks different languages.

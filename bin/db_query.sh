@@ -3,24 +3,7 @@
 # bin/db_query.sh
 # SQLite3 query execution utility
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Load .env if it exists (preserve existing environment variables)
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    _OLD_DB_PATH="$DB_PATH"
-    _OLD_LOG_DIR="$LOG_DIR"
-    source "$PROJECT_ROOT/.env"
-    [ -n "$_OLD_DB_PATH" ] && DB_PATH="$_OLD_DB_PATH"
-    [ -n "$_OLD_LOG_DIR" ] && LOG_DIR="$_OLD_LOG_DIR"
-fi
-
-# Use DB_PATH from .env or fallback to default
-DB_PATH="${DB_PATH:-$PROJECT_ROOT/data/scheduler.db}"
-
-# If DB_PATH is relative, prepend PROJECT_ROOT
-if [[ "$DB_PATH" != /* ]]; then
-    DB_PATH="$PROJECT_ROOT/$DB_PATH"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Ensure the database is initialized
 if [ ! -f "$DB_PATH" ]; then
@@ -29,12 +12,21 @@ if [ ! -f "$DB_PATH" ]; then
 fi
 
 # Execute Query
-# Usage: ./db_query.sh "SELECT * FROM services"
-# Execute Query with Concurrency Optimizations
 # Execute Query with Concurrency Optimizations
 # We run PRAGMAs and the query, but filter out PRAGMA results (wal, 10000, etc.)
-# A cleaner way: Use a temporary init file and redirect its output to stderr
 INIT_FILE=$(mktemp)
 echo "PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL;" > "$INIT_FILE"
-sqlite3 -batch -init "$INIT_FILE" "$DB_PATH" "$1" 2>/dev/null | grep -vE "^(wal|[0-9]{5})$"
-rm -f "$INIT_FILE"
+
+# Capture stderr to a temporary file to distinguish between data and errors
+STDERR_FILE=$(mktemp)
+sqlite3 -batch -init "$INIT_FILE" "$DB_PATH" "$1" 2>"$STDERR_FILE" | grep -vE "^(wal|[0-9]{5})$"
+QUERY_EXIT=$?
+
+# Output filtered errors to stderr
+if [ -s "$STDERR_FILE" ]; then
+    # Filter out init noise and output real errors
+    grep -vE "^(-- Loading resources|wal)$" "$STDERR_FILE" >&2
+fi
+
+rm -f "$INIT_FILE" "$STDERR_FILE"
+exit $QUERY_EXIT

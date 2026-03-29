@@ -4,12 +4,13 @@
 # Extreme stress test for DB concurrency
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/test_helper.sh"
+
+# 1. Setup Isolated Test DB
+TEST_DB=$(setup_test_db)
+export DB_PATH="$TEST_DB"
 
 echo "[Stress Test] Starting SQLite concurrency stress test..."
-
-# 1. Clear jobs
-$DB_QUERY "DELETE FROM jobs;"
 
 # 2. Spawn 50 concurrent write processes
 CONCURRENCY=50
@@ -47,15 +48,11 @@ wait
 if [ $? -eq 0 ]; then
     SUCCESS_COUNT=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='COMPLETED';")
     EXPECTED=$((CONCURRENCY * 5))
-    if [ "$SUCCESS_COUNT" -eq "$EXPECTED" ]; then
-        echo "[Success] All $EXPECTED operations completed without a single lock error!"
-        echo "[Success] Concurrency stabilization verified."
-        exit 0
-    else
-        echo "[Fail] Expected $EXPECTED completed jobs, but found $SUCCESS_COUNT."
-        exit 1
-    fi
+    assert_eq "Concurrency stress test result" "$EXPECTED" "$SUCCESS_COUNT"
+    cleanup_test_db "$TEST_DB"
+    print_test_summary
 else
     echo "[Fail] Stress test failed with errors."
+    cleanup_test_db "$TEST_DB"
     exit 1
 fi

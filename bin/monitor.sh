@@ -3,14 +3,7 @@
 # bin/monitor.sh
 # Batch Job System Resource Monitoring Logic
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Load .env if it exists (preserve existing environment variables)
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    _OLD_DB_PATH="$DB_PATH"
-    source "$PROJECT_ROOT/.env"
-    [ -n "$_OLD_DB_PATH" ] && DB_PATH="$_OLD_DB_PATH"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Check for required monitoring tools
 check_monitor_deps() {
