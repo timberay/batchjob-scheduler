@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # bin/monitor.sh
-# System Resource Monitoring Logic
+# Batch Job System Resource Monitoring Logic
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

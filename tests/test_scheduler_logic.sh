@@ -3,7 +3,8 @@
 # tests/test_scheduler_logic.sh
 # Scheduler Logic Unit Test (Time & Queue)
 
-source "/home/tonny/projects/opengrok-scheduler/bin/scheduler.sh" --no-run
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/bin/scheduler.sh" --no-run
 
 echo "[Test] Scheduler Logic Test Started..."
 

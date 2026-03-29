@@ -1,9 +1,9 @@
-# OpenGrok Index Scheduler Architecture
+# Batch Job Scheduler Architecture
 
-This is the detailed design for the Bash-based helper that manages OpenGrok indexing.
+This is the detailed design for the Bash-based helper that manages batch jobs.
 
 ## 1. Overview
-This tool helps manage many OpenGrok boxes. It runs them one by one during the night (18:00 to 06:00). It also checks if the computer is too tired (CPU, Memory, Disk, and Processes) to make sure everything runs smoothly.
+This tool helps manage many service boxes. It runs them one by one during the night (18:00 to 06:00). It also checks if the computer is too tired (CPU, Memory, Disk, and Processes) to make sure everything runs smoothly.
 
 ## 2. Main Features
 - **Time Watcher**: It only runs during the lucky hours you pick (like at night).

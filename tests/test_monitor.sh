@@ -3,7 +3,8 @@
 # tests/test_monitor.sh
 # Resource Monitoring Unit Test
 
-source "/home/tonny/projects/opengrok-scheduler/bin/monitor.sh"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/bin/monitor.sh"
 
 echo "[Test] Resource Monitoring Test Started..."
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # bin/scheduler.sh
-# OpenGrok Index Scheduler Main Script
+# Batch Job Scheduler Main Script
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Load .env if it exists (preserve existing environment variables)
@@ -90,7 +90,7 @@ run_indexing_task() {
     local SERVICE_ID=$1
     local CONTAINER_NAME=$2
 
-    log "Starting indexing for $CONTAINER_NAME..."
+    log "Starting batch job for $CONTAINER_NAME..."
     # Insert and get ID in the same session
     local JOB_ID=$($DB_QUERY "INSERT INTO jobs (service_id, status, start_time) VALUES ($SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid();")
     
@@ -146,16 +146,16 @@ run_indexing_task() {
     # Handle idle timeout khusus
     if [ "$IDLE_ELAPSED" -ge "$IDLE_LIMIT" ]; then
         $DB_QUERY "UPDATE jobs SET status='TIMEOUT', end_time=datetime('now', 'localtime'), duration=$DURATION, message='Idle ${IDLE_ELAPSED}s (limit: ${IDLE_LIMIT}s)' WHERE id=$JOB_ID;"
-        log "[Warning] Indexing $CONTAINER_NAME idle-timed out after ${IDLE_ELAPSED}s."
+        log "[Warning] Batch job $CONTAINER_NAME idle-timed out after ${IDLE_ELAPSED}s."
         return 1
     fi
 
     if [ "$EXIT_CODE" -eq 0 ]; then
         $DB_QUERY "UPDATE jobs SET status='COMPLETED', end_time=datetime('now', 'localtime'), duration=$DURATION WHERE id=$JOB_ID;"
-        log "Indexing $CONTAINER_NAME completed successfully."
+        log "Batch job $CONTAINER_NAME completed successfully."
     else
         $DB_QUERY "UPDATE jobs SET status='FAILED', end_time=datetime('now', 'localtime'), duration=$DURATION, message='Exit code $EXIT_CODE' WHERE id=$JOB_ID;"
-        log "Indexing $CONTAINER_NAME failed."
+        log "Batch job $CONTAINER_NAME failed."
     fi
     return $EXIT_CODE
 }
@@ -165,7 +165,7 @@ if [[ "$1" != "--no-run" ]]; then
 
     # Handle --status argument
     if [[ "$1" == "--status" ]]; then
-        echo "[OpenGrok Indexing Summary]"
+        echo "[Batch Job Execution Summary]"
         echo "-------------------------------------------------------------------------------------------------------------"
         printf "%-25s | %-12s | %-10s | %-20s | %-12s | %-20s\n" "Service Name" "Status" "Process" "Start Time" "Duration" "Message"
         echo "-------------------------------------------------------------------------------------------------------------"
@@ -222,12 +222,12 @@ if [[ "$1" != "--no-run" ]]; then
         S_ID=$(echo "$SERVICE_INFO" | cut -d'|' -f1)
         S_NAME=$(echo "$SERVICE_INFO" | cut -d'|' -f2)
         
-        log "Manually starting indexing for $S_NAME..."
+        log "Manually starting batch job for $S_NAME..."
         run_indexing_task "$S_ID" "$S_NAME"
         exit $?
     fi
 
-    log "OpenGrok Scheduler Started."
+    log "Batch Job Scheduler Started."
     
     # Run Database Migration (ensure schema is up-to-date)
     "$PROJECT_ROOT/bin/migrate_db.sh"

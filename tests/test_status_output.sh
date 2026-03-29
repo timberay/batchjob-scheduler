@@ -3,7 +3,7 @@
 # tests/test_status_output.sh
 # CLI status output test
 
-PROJECT_ROOT="/home/tonny/projects/opengrok-scheduler"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
 
 echo "[Test] CLI Status Output Test Started..."
@@ -24,7 +24,7 @@ echo "--- Received Output ---"
 echo "$OUTPUT"
 echo "--- End of Output ---"
 
-if echo "$OUTPUT" | grep -q "OpenGrok Indexing Summary"; then
+if echo "$OUTPUT" | grep -q "Batch Job Execution Summary"; then
     echo "[Pass] Output contains summary header."
 else
     echo "[Fail] Summary header not found."

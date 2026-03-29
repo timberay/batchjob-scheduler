@@ -3,8 +3,9 @@
 # tests/test_db_init.sh
 # Database initialization test script
 
-DB_PATH="/home/tonny/projects/opengrok-scheduler/data/scheduler.db"
-INIT_SQL="/home/tonny/projects/opengrok-scheduler/sql/init_db.sql"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DB_PATH="$PROJECT_ROOT/data/scheduler.db"
+INIT_SQL="$PROJECT_ROOT/sql/init_db.sql"
 
 # 1. Previous DB Cleanup
 rm -f "$DB_PATH"

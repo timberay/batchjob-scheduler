@@ -1,5 +1,5 @@
 -- sql/init_db.sql
--- OpenGrok Scheduler Schema
+-- Batch Job Scheduler Schema
 
 -- Services Table
 CREATE TABLE IF NOT EXISTS services (

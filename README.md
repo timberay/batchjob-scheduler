@@ -1,6 +1,6 @@
-# OpenGrok Index Scheduler
+# Batch Job Scheduler
 
-This is a Bash-based helper that organizes indexing for more than 70 OpenGrok service boxes. It checks how busy the computer is and works only when there is enough room and during the night.
+This is a Bash-based helper that organizes batch jobs for more than 70 service boxes. It checks how busy the computer is and works only when there is enough room and during the night.
 
 ## Main Features
 
@@ -11,10 +11,10 @@ This is a Bash-based helper that organizes indexing for more than 70 OpenGrok se
   - **Thinking Space (Memory)**: It looks at the real space left for thinking (Available Memory and Swap Usage).
   - **Internet (Network)**: It detects the speed and checks how much is being used across all physical interfaces.
   - **Disk & Inodes**: It checks if the disks are busy or running out of indexing space (Disk Usage, Disk I/O, and Inode Usage) for all local partitions automatically.
-- **Dynamic Process Tracking**: It tracks the live status of each indexing task (like Running, Sleeping, or Disk Wait) and automatically cleans up finished or stuck tasks (Zombie reaping).
+- **Dynamic Process Tracking**: It tracks the live status of each batch job (like Running, Sleeping, or Disk Wait) and automatically cleans up finished or stuck tasks (Zombie reaping).
 - **Process Usage**: It counts how many other programs are running or waiting.
 - **Notebook Management (SQLite3)**: It keeps the list of boxes, rules, and history in a small notebook file.
-- **Background Work**: It can start indexing tasks in the background so it can do more than one thing at a time.
+- **Background Work**: It can start batch jobs in the background so it can do more than one thing at a time.
 - **Fixed Checking Time**: It follows a strict schedule (like every 5 minutes) to scan for new tasks.
 - **Safe Notebook**: It uses special tricks (WAL and Busy Timeout) so many programs can talk to the notebook at the same time without problems.
 - **Automatic Schema Updates**: It automatically fixes the notebook layout (adds missing columns) every time it starts, so you don't have to worry about manual updates.
@@ -24,7 +24,7 @@ This is a Bash-based helper that organizes indexing for more than 70 OpenGrok se
 ## Project Structure
 
 ```text
-opengrok-scheduler/
+batchjob-scheduler/
 ├── bin/
 │   ├── scheduler.sh    # The main brain and command center
 │   ├── monitor.sh      # The body check tool
@@ -48,7 +48,7 @@ opengrok-scheduler/
 ### 1. What You Need
 - Bash Shell (A special way to talk to Linux)
 - SQLite3 and sysstat (Tools for the helper to work)
-- Docker (The boxes that need indexing)
+- Docker (The boxes that need batch job execution)
 
 ### 2. Make the notebook
 ```bash
@@ -63,7 +63,7 @@ cp .env.example .env
 vi .env
 ```
 
-### 3. Add Your Boxes
+### 3. Add Your Batch Jobs
 Add the names of the boxes you want to organize:
 ```bash
 ./bin/db_query.sh "INSERT INTO services (container_name, priority) VALUES ('box-1', 10);"
@@ -78,7 +78,7 @@ chmod +x bin/*.sh
 
 ## How to Use It
 
-### Run One Box Now (--service)
+### Run One Batch Job Now (--service)
 If you want to start one box right away, no matter what time it is:
 ```bash
 ./bin/scheduler.sh --service box-1

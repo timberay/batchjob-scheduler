@@ -3,7 +3,7 @@
 # tests/test_init_option.sh
 # --init option functionality test
 
-PROJECT_ROOT="/home/tonny/projects/opengrok-scheduler"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
 
 echo "[Test] CLI --init Option Test Started..."
