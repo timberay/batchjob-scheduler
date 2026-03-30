@@ -1,5 +1,7 @@
 # Implementation Tasks (TDD & E2E Focused)
 
+* This document is intended for use only during the initial MVP development phase
+
 ## Coding Rules: Be a Good Student!
 
 **Write all code in this order: Red → Green → Refactor.**

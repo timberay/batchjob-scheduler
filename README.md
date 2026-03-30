@@ -15,6 +15,7 @@ This is a Bash-based helper that organizes batch jobs for more than 70 service b
 - **Process Usage**: It counts how many other programs are running or waiting.
 - **Notebook Management (SQLite3)**: It keeps the list of boxes, rules, and history in a small notebook file.
 - **Background Work**: It can start batch jobs in the background so it can do more than one thing at a time.
+- **Sequential Execution (--sequence)**: If you prefer to run only one task at a time, use the `--sequence` flag to wait for the current job to finish before starting the next one.
 - **Fixed Checking Time**: It follows a strict schedule (like every 5 minutes) to scan for new tasks.
 - **Safe Notebook**: It uses special tricks (WAL and Busy Timeout) so many programs can talk to the notebook at the same time without problems.
 - **Automatic Schema Updates**: It automatically fixes the notebook layout (adds missing columns) every time it starts, so you don't have to worry about manual updates.
@@ -96,6 +97,12 @@ Clear the diary for the last 23 hours:
 ./bin/scheduler.sh --init
 ```
 
+### Run Jobs One by One (--sequence)
+If you want the helper to wait for each box to finish before starting the next one (no parallel work):
+```bash
+./bin/scheduler.sh --sequence
+```
+
 ### Changing the Rules
 You can change rules in the `.env` file. The helper reads this file every time it looks for a new task, so you don't need to restart it after a change.
 
@@ -134,4 +141,5 @@ Run these games to make sure the helper is working:
 ./tests/test_idle_timeout.sh      # Check if hung processes are stopped after a timeout
 ./tests/test_init_option.sh       # Check if the "start fresh" command works
 ./tests/test_service_option.sh    # Check if running one box right away works
+./tests/test_sequence_mode.sh    # Check if the helper can run boxes one by one
 ```

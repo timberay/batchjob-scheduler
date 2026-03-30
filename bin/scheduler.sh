@@ -157,6 +157,13 @@ run_indexing_task() {
 # Main Execution Loop (Only run if not sourced with --no-run)
 if [[ "$1" != "--no-run" ]]; then
 
+    MODE_SEQUENCE=false
+    for arg in "$@"; do
+        if [[ "$arg" == "--sequence" ]]; then
+            MODE_SEQUENCE=true
+        fi
+    done
+
     # Handle --status argument
     if [[ "$1" == "--status" ]]; then
         echo "[Batch Job Execution Summary]"
@@ -360,7 +367,9 @@ if [[ "$1" != "--no-run" ]]; then
                     log "Resource limit exceeded: $LAST_BYPASS_REASON. Container '$CONTAINER_NAME' is waiting..."
                 else
                     # 5. Double Check: Is there already a process running for this container?
-                    if [[ -n "${BG_PIDS[$CONTAINER_NAME]}" ]] && kill -0 "${BG_PIDS[$CONTAINER_NAME]}" 2>/dev/null; then
+                    if [[ "$MODE_SEQUENCE" == "true" ]] && [[ ${#BG_PIDS[@]} -gt 0 ]]; then
+                        log "Process check skip: Sequence mode is enabled and ${#BG_PIDS[@]} job(s) already running."
+                    elif [[ -n "${BG_PIDS[$CONTAINER_NAME]}" ]] && kill -0 "${BG_PIDS[$CONTAINER_NAME]}" 2>/dev/null; then
                         log "Process check skip: $CONTAINER_NAME is already being indexed. Skipping..."
                     else
                         # 6. Execute Job (Simple Background)
