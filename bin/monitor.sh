@@ -177,17 +177,17 @@ get_bandwidth_usage() {
     # 2. Capture initial stats for all target interfaces
     local STATS1=()
     for iface in "${INTERFACES[@]}"; do
-        local S=$(grep "$iface" /proc/net/dev | awk '{print $2 + $10}')
+        local S=$(awk -v iface="$iface" '$1 == iface":" {print $2 + $10}' /proc/net/dev)
         STATS1+=("$iface:$S")
     done
-    
+
     sleep 1
-    
+
     # 3. Capture second stats and calculate maximum score
     for s1 in "${STATS1[@]}"; do
         local iface="${s1%%:*}"
         local val1="${s1#*:}"
-        local val2=$(grep "$iface" /proc/net/dev | awk '{print $2 + $10}')
+        local val2=$(awk -v iface="$iface" '$1 == iface":" {print $2 + $10}' /proc/net/dev)
         
         local diff=$((val2 - val1))
         [ "$diff" -lt 0 ] && diff=0
