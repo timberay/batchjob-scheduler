@@ -148,16 +148,16 @@ if [[ "$1" != "--no-run" ]]; then
         S_NAME=$(echo "$SERVICE_INFO" | cut -d'|' -f2)
         
         log "Manually starting batch job for $S_NAME..."
-        
-        local JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; INSERT INTO jobs (service_id, status, start_time) VALUES ($S_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid(); COMMIT;")
-        
+
+        JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; INSERT INTO jobs (service_id, status, start_time) VALUES ($S_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid(); COMMIT;")
+
         if [ $? -ne 0 ] || [ -z "$JOB_ID" ]; then
             log "[Error] Failed to create job record in database for $S_NAME. Skipping..."
             exit 1
         fi
-        
+
         run_indexing_task "$S_NAME"
-        local REAP_EXIT=$?
+        REAP_EXIT=$?
         
         if [ "$REAP_EXIT" -eq 124 ]; then
             $DB_QUERY "UPDATE jobs SET status='TIMEOUT', process_state='EXITED', end_time=datetime('now', 'localtime'), duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER), message='Max duration limit exceeded' WHERE id=$JOB_ID;"
@@ -340,13 +340,13 @@ if [[ "$1" != "--no-run" ]]; then
                         log "Process check skip: $CONTAINER_NAME is already being indexed. Skipping..."
                     else
                         # 6. Execute Job (Simple Background)
-                        local JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; INSERT INTO jobs (service_id, status, start_time) VALUES ($NEXT_SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid(); COMMIT;")
-                        
+                        JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; INSERT INTO jobs (service_id, status, start_time) VALUES ($NEXT_SERVICE_ID, 'RUNNING', datetime('now', 'localtime')); SELECT last_insert_rowid(); COMMIT;")
+
                         if [ $? -ne 0 ] || [ -z "$JOB_ID" ]; then
                             log "[Error] Failed to create job record in database for $CONTAINER_NAME. Skipping..."
                         else
                             run_indexing_task "$CONTAINER_NAME" &
-                            local PID=$!
+                            PID=$!
                             BG_PIDS["$CONTAINER_NAME"]=$PID
                             BG_PREV_STATE["$CONTAINER_NAME"]="RUNNING"
                             # Update DB with PID immediately
