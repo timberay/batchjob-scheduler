@@ -17,8 +17,8 @@ tmp/
 # AI Agent configurations and skills
 .agent/
 .claude/
-AGENTS.md
-CLAUDE.md
+/*.md
+!README.md
 .env
 data/
 logs/
