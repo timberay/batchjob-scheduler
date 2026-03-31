@@ -214,8 +214,24 @@ if [[ "$1" != "--no-run" ]]; then
                     ;;
                 ZOMBIE)
                     wait "$PID" 2>/dev/null
-                    log "[Warning] Zombie reaped: $CNAME (PID=$PID)"
-                    $DB_QUERY "UPDATE jobs SET process_state='ZOMBIE' WHERE pid=$PID AND status='RUNNING';"
+                    REAP_EXIT=$?
+                    log "[Warning] Zombie reaped: $CNAME (PID=$PID, exit=$REAP_EXIT)"
+                    if [ "$REAP_EXIT" -eq 124 ]; then
+                        $DB_QUERY "UPDATE jobs SET status='TIMEOUT', process_state='EXITED',
+                                   end_time=datetime('now', 'localtime'),
+                                   duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER),
+                                   message='Zombie reaped - timeout' WHERE pid=$PID AND status='RUNNING';"
+                    elif [ "$REAP_EXIT" -eq 0 ]; then
+                        $DB_QUERY "UPDATE jobs SET status='COMPLETED', process_state='EXITED',
+                                   end_time=datetime('now', 'localtime'),
+                                   duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER)
+                                   WHERE pid=$PID AND status='RUNNING';"
+                    else
+                        $DB_QUERY "UPDATE jobs SET status='FAILED', process_state='EXITED',
+                                   end_time=datetime('now', 'localtime'),
+                                   duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER),
+                                   message='Zombie reaped - exit $REAP_EXIT' WHERE pid=$PID AND status='RUNNING';"
+                    fi
                     unset BG_PIDS["$CNAME"]
                     unset BG_PREV_STATE["$CNAME"]
                     ;;
