@@ -65,3 +65,31 @@ When adding a new phase, you must add **Test** and **E2E** items to the list.
 - [x] Show more details in the diary when the computer is too tired.
 - [x] Change the memory window from 20 hours to 23 hours everywhere.
 - [x] **E2E**: Check if the diary and reports match real-life busy moments.
+
+## Phase 8: Bug Fixes & Reliability Hardening
+
+### 8-1. Critical Fixes
+- [x] **Test**: Verify that `local` outside functions causes job creation failure in scheduler.sh.
+- [x] **Fix**: Remove `local` keyword from non-function context in scheduler.sh (lines 152, 160, 343, 349).
+- [x] **Test**: Verify recovered jobs are not immediately marked ORPHANED after recovery.
+- [x] **Fix**: Exclude recovered PIDs from blanket ORPHANED update in scheduler.sh (line 252).
+- [x] **Test**: Verify `db_query.sh` returns sqlite3 exit code, not grep exit code.
+- [x] **Fix**: Use `PIPESTATUS[0]` or `set -o pipefail` in db_query.sh to propagate sqlite3 exit code.
+- [x] **Test**: Verify 5-digit numeric query results are not filtered by db_query.sh.
+- [x] **Fix**: Replace broad grep filter with targeted PRAGMA output suppression in db_query.sh.
+- [x] **E2E**: Run full scheduler cycle and confirm jobs are created, tracked, and completed end-to-end.
+
+### 8-2. High Severity Fixes
+- [x] **Test**: Verify ZOMBIE processes are properly finalized (not stuck in RUNNING).
+- [x] **Fix**: Use `wait` exit code to set final status (COMPLETED/FAILED) for ZOMBIE processes in scheduler.sh.
+- [x] **Test**: Verify network bandwidth grep matches exact interface names only.
+- [x] **Fix**: Use anchored regex pattern (`^\s*$iface:`) for `/proc/net/dev` grep in monitor.sh.
+- [x] **Test**: Verify migrate_db.sh succeeds under concurrent DB access.
+- [x] **Fix**: Add WAL mode and busy_timeout PRAGMAs to all direct sqlite3 calls in migrate_db.sh.
+
+### 8-3. Medium Severity Fixes
+- [x] **Test**: Verify all .env variables are preserved when pre-set in environment.
+- [x] **Fix**: Extend `load_env()` in common.sh to save/restore all configuration variables.
+- [x] **Fix**: Rename `SECONDS` parameter to `SECS` in `format_duration()` to avoid shadowing bash built-in.
+- [x] **Fix**: Add `heartbeat` table definition to `init_db.sql` for schema completeness.
+- [ ] **E2E**: Verify threshold boundary behavior and confirm `-gt` vs `-ge` intent for check_thresholds.
