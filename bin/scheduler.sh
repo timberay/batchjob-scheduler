@@ -235,21 +235,40 @@ if [[ "$1" != "--no-run" ]]; then
     # Attempt to recover previously RUNNING jobs by checking process existence
     log "Attempting to recover previously RUNNING jobs..."
     RECOVER_JOBS=$($DB_QUERY "SELECT j.id, j.pid, s.container_name FROM jobs j JOIN services s ON j.service_id=s.id WHERE j.status='RUNNING' AND j.pid IS NOT NULL;")
+    RECOVERED_PIDS=()
     if [ -n "$RECOVER_JOBS" ]; then
         while IFS='|' read -r JID JPID JCNAME; do
-            if kill -0 "$JPID" 2>/dev/null && grep -q "bash" "/proc/$JPID/comm" 2>/dev/null; then
-                log "[Recovery] Restored job tracking for $JCNAME (PID=$JPID)"
-                BG_PIDS["$JCNAME"]=$JPID
-                BG_PREV_STATE["$JCNAME"]="RUNNING"
+            # Check if process is alive - accept bash or any child process
+            if kill -0 "$JPID" 2>/dev/null && [ -d "/proc/$JPID" ]; then
+                PROC_COMM=$(cat "/proc/$JPID/comm" 2>/dev/null || echo "")
+                if [[ "$PROC_COMM" =~ ^(bash|sh|sleep|timeout)$ ]]; then
+                    log "[Recovery] Restored job tracking for $JCNAME (PID=$JPID, comm=$PROC_COMM)"
+                    BG_PIDS["$JCNAME"]=$JPID
+                    BG_PREV_STATE["$JCNAME"]="RUNNING"
+                    RECOVERED_PIDS+=("$JPID")
+                else
+                    log "[Warning] PID $JPID for $JCNAME has unexpected comm: $PROC_COMM. Marking ORPHANED."
+                    $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE id=$JID;"
+                fi
             else
                 log "[Warning] PID $JPID for $JCNAME is not alive or invalid. Marking ORPHANED."
                 $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE id=$JID;"
             fi
         done <<< "$RECOVER_JOBS"
     fi
-    
-    # Mark any remaining RUNNING ones without a valid PID as ORPHANED too
-    $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
+
+    # Mark any remaining RUNNING jobs as ORPHANED, excluding recovered PIDs
+    if [ ${#RECOVERED_PIDS[@]} -gt 0 ]; then
+        PID_LIST=$(IFS=','; echo "${RECOVERED_PIDS[*]}")
+        $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN'
+                   WHERE status='RUNNING'
+                   AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'))
+                   AND (pid IS NULL OR pid NOT IN ($PID_LIST));"
+    else
+        $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN'
+                   WHERE status='RUNNING'
+                   AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
+    fi
     
     while true; do
         # Log Cleanup (Keep last N days)
