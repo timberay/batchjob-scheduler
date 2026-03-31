@@ -143,5 +143,5 @@ Run these games to make sure the helper is working:
 ./tests/test_idle_timeout.sh      # Check if jobs exceeding max duration are stopped
 ./tests/test_init_option.sh       # Check if the "start fresh" command works
 ./tests/test_service_option.sh    # Check if running one box right away works
-./tests/test_sequence_mode.sh    # Check if the helper can run boxes one by one
+./tests/test_sequence_mode.sh     # Check if the helper can run boxes one by one
 ```
