@@ -4,12 +4,8 @@
 # Test idle detection with process tree CPU sampling
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/tests/test_helper.sh"
 BIN_DIR="$PROJECT_ROOT/bin"
-DATA_DIR="$PROJECT_ROOT/data"
-DEFAULT_DB="$DATA_DIR/scheduler.db"
-TEST_DB="$DATA_DIR/test_idle_$(date +%s).db"
-PASS=0
-FAIL=0
 
 pass() { echo "[Pass] $1"; ((PASS++)); }
 fail() { echo "[Fail] $1"; ((FAIL++)); }
@@ -121,13 +117,8 @@ fi
 # Integration Tests (require DB and scheduler)
 # ===========================================
 
-# 1. Setup Test Environment
-if [ ! -f "$DEFAULT_DB" ]; then
-    echo "[Error] Base database '$DEFAULT_DB' not found. Please run scheduler once or initialize DB."
-    exit 1
-fi
-
-cp "$DEFAULT_DB" "$TEST_DB"
+# 1. Setup Test Environment using test_helper
+TEST_DB=$(setup_test_db)
 export DB_PATH="$TEST_DB"
 
 # Create a temp scheduler copy with sleep 120 instead of sleep 2 (so idle detection can trigger)
@@ -240,7 +231,7 @@ wait $SCHEDULER_PID 2>/dev/null
 rm -f "$TEMP_SCHEDULER_ZEROCPU"
 
 # Cleanup
-rm -f "$TEST_DB"
+cleanup_test_db "$TEST_DB"
 rm -f "$TEMP_SCHEDULER"
 
 echo ""
