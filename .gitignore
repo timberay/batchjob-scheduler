@@ -1,24 +1,22 @@
-# SQLite database
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
+# Data (SQLite databases)
+data/
 
 # Logs
-*.log
-bin/*.log
 logs/
+*.log
 
 # Temporary files
 tmp/
-.DS_Store
 *.swp
+.DS_Store
 
-# AI Agent configurations and skills
+# Environment
+.env
+
+# AI agent configurations
 .agent/
 .claude/
-/*.md
+
+# markdown files
+*.md
 !README.md
-.env
-data/
-logs/
