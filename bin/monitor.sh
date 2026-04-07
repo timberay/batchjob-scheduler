@@ -288,6 +288,34 @@ get_descendant_pids() {
     done
 }
 
+# Get total CPU time (user + system jiffies) for a process and all its descendants
+# Args: PID
+# Returns: total jiffies (integer), or 0 if process doesn't exist
+get_tree_cpu_time() {
+    local ROOT_PID=$1
+    local TOTAL=0
+
+    # Collect all PIDs: root + descendants
+    local ALL_PIDS="$ROOT_PID $(get_descendant_pids "$ROOT_PID")"
+
+    for PID in $ALL_PIDS; do
+        local STAT
+        STAT=$(cat "/proc/$PID/stat" 2>/dev/null) || continue
+        # Fields 14 (utime) and 15 (stime) — but field 2 (comm) can contain spaces and parens
+        # Safe parse: strip everything up to and including the last ')' then read fields
+        local AFTER_COMM="${STAT##*) }"
+        # After stripping "(comm) ", remaining starts at field 3
+        # So utime = field 12 of remaining, stime = field 13 of remaining
+        local UTIME STIME
+        read -r _ _ _ _ _ _ _ _ _ _ _ UTIME STIME _ <<< "$AFTER_COMM"
+        if [[ "$UTIME" =~ ^[0-9]+$ ]] && [[ "$STIME" =~ ^[0-9]+$ ]]; then
+            TOTAL=$(( TOTAL + UTIME + STIME ))
+        fi
+    done
+
+    echo "$TOTAL"
+}
+
 # Evaluate process busyness based on /proc/stat and /proc/loadavg
 # Returns a "Busy Score" where RESOURCE_THRESHOLD+ indicates high load
 get_proc_usage() {

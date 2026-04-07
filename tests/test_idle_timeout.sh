@@ -46,6 +46,26 @@ kill -- -$PARENT_PID 2>/dev/null
 kill $PARENT_PID 2>/dev/null
 wait $PARENT_PID 2>/dev/null
 
+# --- Unit Test: get_tree_cpu_time ---
+echo ""
+echo "[Case 0b] Unit test: get_tree_cpu_time"
+
+# Spawn a process that does CPU work via a child (dd runs indefinitely until killed)
+bash -c 'dd if=/dev/zero of=/dev/null bs=1M 2>/dev/null' &
+CPU_PARENT=$!
+sleep 1
+
+CPU_TIME=$(get_tree_cpu_time $CPU_PARENT)
+if [ -n "$CPU_TIME" ] && [ "$CPU_TIME" -gt 0 ] 2>/dev/null; then
+    pass "get_tree_cpu_time returned $CPU_TIME jiffies for active process tree"
+else
+    fail "get_tree_cpu_time returned '$CPU_TIME' (expected > 0)"
+fi
+
+# Cleanup
+kill $CPU_PARENT 2>/dev/null
+wait $CPU_PARENT 2>/dev/null
+
 # Summary (placeholder for later tasks)
 echo ""
 echo "=============================="
