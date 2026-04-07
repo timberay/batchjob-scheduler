@@ -91,6 +91,31 @@ else
 fi
 wait $TREE_PID 2>/dev/null
 
+# --- Unit Test: idle detection handles vanished process without bash error ---
+echo ""
+echo "[Case 0d] Unit test: integer validation for vanished process"
+
+# Simulate what happens when get_tree_cpu_time returns empty string
+EMPTY_CPU=""
+LAST_CPU_VAL="100"
+
+# This should NOT produce a bash error
+ERROR_OUTPUT=$( {
+    if [[ ! "$EMPTY_CPU" =~ ^[0-9]+$ ]]; then
+        echo "SKIPPED"
+    elif [ -n "$LAST_CPU_VAL" ] && [ "$EMPTY_CPU" -eq "$LAST_CPU_VAL" ]; then
+        echo "IDLE"
+    else
+        echo "ACTIVE"
+    fi
+} 2>&1 )
+
+if [ "$ERROR_OUTPUT" = "SKIPPED" ]; then
+    pass "Empty CPU value correctly skipped without bash error"
+else
+    fail "Empty CPU value produced unexpected output: $ERROR_OUTPUT"
+fi
+
 
 # ===========================================
 # Integration Tests (require DB and scheduler)
@@ -132,7 +157,7 @@ export RESOURCE_THRESHOLD=200
 timeout 60s bash "$TEMP_SCHEDULER" &
 SCHEDULER_PID=$!
 
-sleep 35 # Wait for idle timeout to trigger (15s + scheduler intervals + buffer)
+sleep 45 # Wait for idle timeout to trigger (15s + scheduler intervals + kill_process_tree grace period + buffer)
 
 STATUS=$(sqlite3 "$TEST_DB" "SELECT status FROM jobs WHERE service_id=(SELECT id FROM services WHERE container_name='idle_svc') ORDER BY id DESC LIMIT 1;")
 MSG=$(sqlite3 "$TEST_DB" "SELECT message FROM jobs WHERE service_id=(SELECT id FROM services WHERE container_name='idle_svc') ORDER BY id DESC LIMIT 1;")

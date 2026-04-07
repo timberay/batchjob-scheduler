@@ -283,6 +283,13 @@ if [[ "$1" != "--no-run" ]]; then
                     if [ "${JOB_IDLE_TIMEOUT:-0}" -gt 0 ]; then
                         local CURRENT_CPU
                         CURRENT_CPU=$(get_tree_cpu_time "$PID")
+
+                        # Validate: if process vanished mid-sample, skip this cycle
+                        if [[ ! "$CURRENT_CPU" =~ ^[0-9]+$ ]]; then
+                            BG_LAST_CPU["$CNAME"]=""
+                            continue
+                        fi
+
                         local LAST_CPU=${BG_LAST_CPU[$CNAME]:-""}
 
                         if [ -n "$LAST_CPU" ] && [ "$CURRENT_CPU" -eq "$LAST_CPU" ] && [ "$CURRENT_CPU" -gt 0 ]; then
