@@ -29,20 +29,21 @@ This is a Bash-based helper that organizes batch jobs for more than 70 service b
 batchjob-scheduler/
 ├── bin/
 │   ├── scheduler.sh    # The main brain and command center
-│   ├── monitor.sh      # The body check tool
+│   ├── monitor.sh      # The body check tool (10 resource metrics)
 │   ├── db_query.sh     # The tool for talking to the notebook
-│   └── migrate_db.sh   # The tool for updating the notebook layout
+│   ├── migrate_db.sh   # The tool for updating the notebook layout
+│   └── common.sh       # Shared environment loading and input validation
 ├── sql/
 │   └── init_db.sql     # The original layout for the notebook
 ├── data/
 │   └── scheduler.db    # The notebook file itself
-├── tests/              # Games and tests to check if everything works
+├── tests/
+│   ├── test_helper.sh  # Shared test utilities and assertions
+│   └── test_*.sh       # Test scripts for each module
 ├── logs/               # A diary of every action the helper takes
 ├── .env.example        # A template for your own rules
 ├── .env                # Your own rules (you make this from the template)
-├── README.md           # This guide
-├── ARCHITECTURE.md     # A big map of how it all works
-└── TASK.md             # A checklist of what we have done
+└── README.md           # This guide
 ```
 
 ## How to Get Started
@@ -65,14 +66,14 @@ cp .env.example .env
 vi .env
 ```
 
-### 3. Add Your Batch Jobs
+### 4. Add Your Batch Jobs
 Add the names of the boxes you want to organize:
 ```bash
 ./bin/db_query.sh "INSERT INTO services (container_name, priority) VALUES ('box-1', 10);"
 ./bin/db_query.sh "INSERT INTO services (container_name, priority) VALUES ('box-2', 5);"
 ```
 
-### 4. Start the Helper!
+### 5. Start the Helper!
 ```bash
 chmod +x bin/*.sh
 ./bin/scheduler.sh
@@ -133,17 +134,34 @@ You can change rules in the `.env` file. The helper reads this file every time i
 ## Running Tests
 Run these games to make sure the helper is working:
 ```bash
-./tests/test_monitor.sh           # Check the body check tool
-./tests/test_scheduler_logic.sh   # Check the time and waiting rules
-./tests/test_status_output.sh     # Check the status reports
-./tests/test_db_init.sh           # Check if the helper can make its first notes
-./tests/test_db_stress.sh         # Check if the notebook is safe when many things happen
-./tests/test_db_error_handling.sh # Check how the helper handles notebook errors
-./tests/test_input_validation.sh  # Check if the helper rejects bad input (SQL injection etc.)
-./tests/test_async_concurrency.sh # Check if many boxes can work at the same time
-./tests/test_orphan_status.sh     # Check if the helper detects jobs after a crash
-./tests/test_idle_timeout.sh      # Check if idle jobs (no CPU activity in process tree) are detected and stopped
-./tests/test_init_option.sh       # Check if the "start fresh" command works
-./tests/test_service_option.sh    # Check if running one box right away works
-./tests/test_sequence_mode.sh     # Check if the helper can run boxes one by one
+# Resource Monitoring
+./tests/test_monitor.sh             # Check all 10 resource metrics and thresholds
+
+# Scheduler Logic
+./tests/test_scheduler_logic.sh     # Check the time and waiting rules
+./tests/test_async_concurrency.sh   # Check if many boxes can work at the same time
+./tests/test_sequence_mode.sh       # Check if the helper can run boxes one by one
+./tests/test_idle_timeout.sh        # Check if idle jobs (no CPU activity) are detected and stopped
+./tests/test_sigterm_cleanup.sh     # Check if the helper cleans up on shutdown signal
+
+# Command Options
+./tests/test_init_option.sh         # Check if the "start fresh" command works
+./tests/test_service_option.sh      # Check if running one box right away works
+./tests/test_status_output.sh       # Check the status reports
+
+# Database
+./tests/test_db_init.sh             # Check if the helper can make its first notes
+./tests/test_db_stress.sh           # Check if the notebook is safe when many things happen
+./tests/test_db_error_handling.sh   # Check how the helper handles notebook errors
+./tests/test_db_query_fixes.sh      # Check database query edge cases
+./tests/test_migrate_constraint.sh  # Check schema migration with constraints
+
+# Process & Recovery
+./tests/test_orphan_status.sh       # Check if the helper detects jobs after a crash
+./tests/test_orphan_recovery_fix.sh # Check if orphaned jobs are recovered correctly
+
+# Code Quality
+./tests/test_input_validation.sh    # Check if the helper rejects bad input (SQL injection etc.)
+./tests/test_local_keyword_fix.sh   # Check variable scoping (local keyword usage)
+./tests/test_exec_redirect.sh       # Check stderr is not permanently redirected
 ```
