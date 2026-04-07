@@ -54,25 +54,18 @@ migrate_query "CREATE TABLE IF NOT EXISTS heartbeat (id INTEGER PRIMARY KEY, las
 
 # 4. Jobs Table Status Constraint Migration (Requires table recreation in SQLite)
 check_and_update_status_constraint() {
-    local SCHEMA=$(migrate_query ".schema jobs")
+    local SCHEMA=$(sqlite3 "$DB_PATH" ".schema jobs")
     if ! echo "$SCHEMA" | grep -q "ORPHANED" || ! echo "$SCHEMA" | grep -q "TIMEOUT"; then
         echo "[Migration] Updating status CHECK constraint in 'jobs' table..."
-        
-        # Identify existing columns to preserve data (id, service_id, status, start_time, end_time, duration, message)
-        # pid and process_state are handled by add_column_if_missing above, so they should exist now.
-        local COLS="id, service_id, status, pid, process_state, start_time, end_time, duration, message"
 
-        sqlite3 "$DB_PATH" <<EOF
+        sqlite3 "$DB_PATH" <<'MIGRATION_EOF'
 PRAGMA busy_timeout=10000;
 PRAGMA journal_mode=WAL;
-EOF
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 
--- Rename existing table
 ALTER TABLE jobs RENAME TO jobs_old;
 
--- Create new table with FULL schema including all status values
 CREATE TABLE jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     service_id INTEGER NOT NULL,
@@ -86,15 +79,14 @@ CREATE TABLE jobs (
     FOREIGN KEY (service_id) REFERENCES services(id)
 );
 
--- Copy data with explicit columns
-INSERT INTO jobs ($COLS) SELECT $COLS FROM jobs_old;
+INSERT INTO jobs (id, service_id, status, pid, process_state, start_time, end_time, duration, message)
+    SELECT id, service_id, status, pid, process_state, start_time, end_time, duration, message FROM jobs_old;
 
--- Drop old table
 DROP TABLE jobs_old;
 
 COMMIT;
 PRAGMA foreign_keys=ON;
-EOF
+MIGRATION_EOF
         if [ $? -eq 0 ]; then
             echo "[Migration] Successfully updated status constraint."
         else
