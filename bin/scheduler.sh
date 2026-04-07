@@ -400,7 +400,7 @@ if [[ "$1" != "--no-run" ]]; then
         if [ -n "$STALE_JOBS" ]; then
             while IFS='|' read -r JID JPID JCNAME; do
                 log "[Warning] Expiring stale job id=$JID ($JCNAME, PID=$JPID)."
-                [ -n "$JPID" ] && kill -TERM "$JPID" 2>/dev/null
+                [ -n "$JPID" ] && kill_process_tree "$JPID"
                 $DB_QUERY "UPDATE jobs SET status='TIMEOUT', end_time=datetime('now', 'localtime'), duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER), message='Stale auto-expired' WHERE id=$JID;"
                 unset BG_PIDS["$JCNAME"] 2>/dev/null
                 unset BG_PREV_STATE["$JCNAME"] 2>/dev/null
