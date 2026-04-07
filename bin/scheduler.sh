@@ -215,6 +215,23 @@ if [[ "$1" != "--no-run" ]]; then
     declare -A BG_LAST_CPU    # KEY=CONTAINER_NAME, VALUE=last sampled CPU jiffies
     declare -A BG_IDLE_SINCE  # KEY=CONTAINER_NAME, VALUE=epoch when idle started (0=active)
 
+    # Graceful shutdown handler
+    cleanup_and_exit() {
+        log "Received shutdown signal. Cleaning up..."
+        for CNAME in "${!BG_PIDS[@]}"; do
+            local PID=${BG_PIDS[$CNAME]}
+            log "Terminating $CNAME (PID=$PID)..."
+            kill_process_tree "$PID"
+            $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='EXITED',
+                       end_time=datetime('now', 'localtime'),
+                       duration=CAST((julianday('now', 'localtime') - julianday(start_time)) * 86400 AS INTEGER),
+                       message='Scheduler shutdown' WHERE pid=$PID AND status='RUNNING';"
+        done
+        log "Shutdown complete."
+        exit 0
+    }
+    trap cleanup_and_exit SIGTERM SIGINT
+
     reap_bg_processes() {
         for CNAME in "${!BG_PIDS[@]}"; do
             local PID=${BG_PIDS[$CNAME]}
