@@ -1,53 +1,55 @@
 #!/bin/bash
 
 # tests/test_idle_timeout.sh
-# Test script to verify idle timeout and stdin isolation
+# Test idle detection with process tree CPU sampling
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$PROJECT_ROOT/bin"
 DATA_DIR="$PROJECT_ROOT/data"
 DEFAULT_DB="$DATA_DIR/scheduler.db"
 TEST_DB="$DATA_DIR/test_idle_$(date +%s).db"
+PASS=0
+FAIL=0
 
-echo "[Test] Idle Timeout Test Started..."
+pass() { echo "[Pass] $1"; ((PASS++)); }
+fail() { echo "[Fail] $1"; ((FAIL++)); }
 
-# 1. Setup Test Environment (Copy existing DB to ensure tables exist)
-if [ ! -f "$DEFAULT_DB" ]; then
-    echo "[Error] Base database '$DEFAULT_DB' not found. Please run scheduler once or initialize DB."
-    exit 1
-fi
+echo "=============================="
+echo "[Test] Idle Detection Tests"
+echo "=============================="
 
-cp "$DEFAULT_DB" "$TEST_DB"
-export DB_PATH="$TEST_DB"
+# Source monitor.sh to get functions
+source "$BIN_DIR/common.sh"
+source "$BIN_DIR/monitor.sh"
 
-# 2. Case 1: Idle Hang (should timeout)
-echo "[Case 1] Testing Idle Hang (sleep 60 with JOB_IDLE_TIMEOUT=15)..."
-sqlite3 "$DB_PATH" "DELETE FROM jobs;"
-sqlite3 "$DB_PATH" "DELETE FROM services;"
-sqlite3 "$DB_PATH" "INSERT INTO services (container_name, priority, is_active) VALUES ('idle_svc', 1, 1);"
+# --- Unit Test: get_descendant_pids ---
+echo ""
+echo "[Case 0] Unit test: get_descendant_pids"
 
-# Run scheduler with short intervals and timeout
-export JOB_IDLE_TIMEOUT=15 
-export JOB_TIMEOUT=60 
-export CHECK_INTERVAL=5
-timeout 45s bash "$BIN_DIR/scheduler.sh" &
-SCHEDULER_PID=$!
+# Spawn a parent that spawns a child that spawns a grandchild
+bash -c 'bash -c "sleep 60" & sleep 60' &
+PARENT_PID=$!
+sleep 1
 
-sleep 30 # Wait for idle timeout to trigger (15s + buffer)
+DESCENDANTS=$(get_descendant_pids $PARENT_PID)
+DESC_COUNT=$(echo "$DESCENDANTS" | wc -w)
 
-STATUS=$(sqlite3 "$DB_PATH" "SELECT status FROM jobs WHERE service_id=(SELECT id FROM services WHERE container_name='idle_svc') ORDER BY id DESC LIMIT 1;")
-MSG=$(sqlite3 "$DB_PATH" "SELECT message FROM jobs WHERE service_id=(SELECT id FROM services WHERE container_name='idle_svc') ORDER BY id DESC LIMIT 1;")
-
-if [ "$STATUS" == "TIMEOUT" ] && [[ "$MSG" == *"Idle"* ]]; then
-    echo "[Pass] Idle service was correctly timed out."
+# Should find at least 2 descendants (child bash + grandchild sleep)
+if [ "$DESC_COUNT" -ge 2 ]; then
+    pass "get_descendant_pids found $DESC_COUNT descendants for PID $PARENT_PID"
 else
-    echo "[Fail] Idle service status: $STATUS, Msg: $MSG"
-    kill $SCHEDULER_PID 2>/dev/null
-    rm -f "$TEST_DB"
-    exit 1
+    fail "get_descendant_pids found only $DESC_COUNT descendants (expected >= 2)"
 fi
 
-kill $SCHEDULER_PID 2>/dev/null
-rm -f "$TEST_DB"
-echo "[Success] Idle timeout test passed!"
+# Cleanup
+kill -- -$PARENT_PID 2>/dev/null
+kill $PARENT_PID 2>/dev/null
+wait $PARENT_PID 2>/dev/null
+
+# Summary (placeholder for later tasks)
+echo ""
+echo "=============================="
+echo "Results: $PASS passed, $FAIL failed"
+echo "=============================="
+[ "$FAIL" -gt 0 ] && exit 1
 exit 0

@@ -275,6 +275,19 @@ get_process_state() {
     esac
 }
 
+# Get all descendant PIDs of a given PID (recursive)
+# Args: PID
+# Returns: space-separated list of descendant PIDs
+get_descendant_pids() {
+    local PARENT_PID=$1
+    local CHILDREN
+    CHILDREN=$(pgrep -P "$PARENT_PID" 2>/dev/null)
+    for CHILD in $CHILDREN; do
+        echo "$CHILD"
+        get_descendant_pids "$CHILD"
+    done
+}
+
 # Evaluate process busyness based on /proc/stat and /proc/loadavg
 # Returns a "Busy Score" where RESOURCE_THRESHOLD+ indicates high load
 get_proc_usage() {
