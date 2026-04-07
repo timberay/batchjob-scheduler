@@ -2,34 +2,15 @@
 
 # tests/test_orphan_status.sh
 # Tests for ORPHANED status lifecycle
-# RED-GREEN: These tests verify that stale RUNNING jobs are correctly transitioned to ORPHANED
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Use an isolated test database
-TEST_DB="$PROJECT_ROOT/data/test_orphan.db"
-rm -f "$TEST_DB" "${TEST_DB}-shm" "${TEST_DB}-wal"
-
-# Initialize schema
-sqlite3 "$TEST_DB" < "$PROJECT_ROOT/sql/init_db.sql"
-
-# Override DB_PATH for all sub-scripts
-export DB_PATH="$TEST_DB"
+source "$PROJECT_ROOT/tests/test_helper.sh"
 
 DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
-PASS=0
-FAIL=0
 
-assert_eq() {
-    local DESC=$1 EXPECTED=$2 ACTUAL=$3
-    if [ "$EXPECTED" = "$ACTUAL" ]; then
-        echo "[Pass] $DESC"
-        PASS=$((PASS + 1))
-    else
-        echo "[Fail] $DESC (expected='$EXPECTED', actual='$ACTUAL')"
-        FAIL=$((FAIL + 1))
-    fi
-}
+# Setup isolated test DB
+TEST_DB=$(setup_test_db)
+export DB_PATH="$TEST_DB"
 
 echo "[Test] ORPHANED Status Lifecycle Tests Started..."
 
@@ -43,11 +24,9 @@ SVC_ID=$($DB_QUERY "SELECT id FROM services WHERE container_name='orphan-svc-1';
 echo ""
 echo "--- Test 1: Startup cleanup ---"
 
-# Insert a RUNNING job with no valid PID (simulates crash scenario)
 $DB_QUERY "INSERT INTO jobs (service_id, status, pid, start_time) VALUES ($SVC_ID, 'RUNNING', 99999, datetime('now', 'localtime'));"
 JOB1_ID=$($DB_QUERY "SELECT id FROM jobs WHERE service_id=$SVC_ID AND status='RUNNING' AND pid=99999;")
 
-# Run the startup cleanup query (same as scheduler.sh)
 $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
 
 STATUS=$($DB_QUERY "SELECT status FROM jobs WHERE id=$JOB1_ID;")
@@ -65,7 +44,6 @@ echo "--- Test 2: COMPLETED process_state preserved ---"
 $DB_QUERY "INSERT INTO jobs (service_id, status, pid, process_state, start_time) VALUES ($SVC_ID, 'RUNNING', 88888, 'COMPLETED', datetime('now', 'localtime'));"
 JOB2_ID=$($DB_QUERY "SELECT id FROM jobs WHERE service_id=$SVC_ID AND pid=88888;")
 
-# Run the startup cleanup again
 $DB_QUERY "UPDATE jobs SET status='ORPHANED', process_state='UNKNOWN' WHERE status='RUNNING' AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
 
 STATUS=$($DB_QUERY "SELECT status FROM jobs WHERE id=$JOB2_ID;")
@@ -77,7 +55,6 @@ assert_eq "RUNNING job with process_state=COMPLETED is NOT orphaned" "RUNNING" "
 echo ""
 echo "--- Test 3: ORPHANED auto-expire ---"
 
-# Insert an ORPHANED job with old start_time
 $DB_QUERY "INSERT INTO jobs (service_id, status, process_state, start_time) VALUES ($SVC_ID, 'ORPHANED', 'UNKNOWN', datetime('now', 'localtime', '-2 hours'));"
 JOB3_ID=$($DB_QUERY "SELECT id FROM jobs WHERE service_id=$SVC_ID AND status='ORPHANED' AND start_time < datetime('now', 'localtime', '-1 hour') LIMIT 1;")
 
@@ -91,11 +68,9 @@ assert_eq "ORPHANED job older than STALE_LIMIT is found by expire query" "$JOB3_
 echo ""
 echo "--- Test 4: ORPHANED blocks re-scheduling ---"
 
-# Add a second service to verify it IS selected instead
 $DB_QUERY "INSERT INTO services (container_name, priority, is_active) VALUES ('orphan-svc-2', 5, 1);"
 SVC2_ID=$($DB_QUERY "SELECT id FROM services WHERE container_name='orphan-svc-2';")
 
-# orphan-svc-1 has an ORPHANED job within 23h, orphan-svc-2 has no jobs
 NEXT=$($DB_QUERY "SELECT s.id FROM services s
     WHERE s.is_active=1
     AND NOT EXISTS (
@@ -138,14 +113,7 @@ else
 fi
 
 # --- Cleanup ---
-rm -f "$TEST_DB" "${TEST_DB}-shm" "${TEST_DB}-wal"
+cleanup_test_db "$TEST_DB"
 
-# --- Summary ---
-echo ""
-echo "=========================================="
-echo "Results: $PASS passed, $FAIL failed"
-echo "=========================================="
-
-[ "$FAIL" -gt 0 ] && exit 1
-echo "[Success] All ORPHANED status tests passed!"
-exit 0
+print_test_summary
+exit $?
