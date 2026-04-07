@@ -4,22 +4,23 @@
 # Database initialization test script
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB_PATH="$PROJECT_ROOT/data/scheduler.db"
 INIT_SQL="$PROJECT_ROOT/sql/init_db.sql"
 
-# 1. Previous DB Cleanup
-rm -f "$DB_PATH"
+# Use isolated test DB (not production)
+DB_PATH="$PROJECT_ROOT/data/test_db_init_$$.db"
+rm -f "$DB_PATH" "${DB_PATH}-shm" "${DB_PATH}-wal"
 
 echo "[Test] Starting Database Initialization Test..."
 
-# 2. Run Initialization
+# 1. Run Initialization
 sqlite3 "$DB_PATH" < "$INIT_SQL"
 if [ $? -ne 0 ]; then
     echo "[Fail] SQL execution failed."
+    rm -f "$DB_PATH" "${DB_PATH}-shm" "${DB_PATH}-wal"
     exit 1
 fi
 
-# 3. Table existence check
+# 2. Table existence check
 TABLES=("services" "jobs" "heartbeat")
 for table in "${TABLES[@]}"; do
     EXISTS=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';")
@@ -27,9 +28,13 @@ for table in "${TABLES[@]}"; do
         echo "[Pass] Table '$table' exists."
     else
         echo "[Fail] Table '$table' does not exist."
+        rm -f "$DB_PATH" "${DB_PATH}-shm" "${DB_PATH}-wal"
         exit 1
     fi
 done
+
+# 3. Cleanup
+rm -f "$DB_PATH" "${DB_PATH}-shm" "${DB_PATH}-wal"
 
 echo "[Success] Database initialization test passed!"
 exit 0
