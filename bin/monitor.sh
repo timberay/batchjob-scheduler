@@ -183,7 +183,7 @@ get_bandwidth_usage() {
     # 2. Capture initial stats for all target interfaces
     local STATS1=()
     for iface in "${INTERFACES[@]}"; do
-        local S=$(awk -v iface="$iface" '$1 == iface":" {print $2 + $10}' /proc/net/dev)
+        local S=$(awk -v iface="$iface" '$1 == iface":" {printf "%d", $2 + $10}' /proc/net/dev)
         STATS1+=("$iface:$S")
     done
 
@@ -193,7 +193,7 @@ get_bandwidth_usage() {
     for s1 in "${STATS1[@]}"; do
         local iface="${s1%%:*}"
         local val1="${s1#*:}"
-        local val2=$(awk -v iface="$iface" '$1 == iface":" {print $2 + $10}' /proc/net/dev)
+        local val2=$(awk -v iface="$iface" '$1 == iface":" {printf "%d", $2 + $10}' /proc/net/dev)
         
         local diff=$((val2 - val1))
         [ "$diff" -lt 0 ] && diff=0
@@ -363,7 +363,7 @@ LAST_BYPASS_REASON=""
 # Args: cpu mem disk diskio net proc load iowait swap inode threshold
 # Return: 0 if all safe, 1 if any exceeds
 check_thresholds() {
-    local CPU=$1; local MEM=$2; local DISK=$3; local DISKIO=$4; local NET=$5; local PROC=$6; local LOAD=$7; local IOWAIT=$8; local SWAP=$9; local INODE=${10}; local LIMIT=${11:-100}
+    local CPU=${1:-0}; local MEM=${2:-0}; local DISK=${3:-0}; local DISKIO=${4:-0}; local NET=${5:-0}; local PROC=${6:-0}; local LOAD=${7:-0}; local IOWAIT=${8:-0}; local SWAP=${9:-0}; local INODE=${10:-0}; local LIMIT=${11:-100}
     local REASONS=()
     
     if [ "$CPU" -gt "$LIMIT" ]; then REASONS+=("CPU ${CPU}%"); fi
