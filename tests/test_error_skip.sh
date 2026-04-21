@@ -58,5 +58,49 @@ fi
 
 cleanup_test_db "$TEST_DB"
 
+# ----------------------------------------------------------------------
+# Scenario 2: TIMEOUT service is skipped; next eligible service runs.
+# ----------------------------------------------------------------------
+echo ""
+echo "[Scenario 2] TIMEOUT service should be skipped"
+
+TEST_DB=$(setup_test_db)
+export DB_PATH="$TEST_DB"
+
+$DB_QUERY "INSERT INTO services (container_name, priority, is_active) VALUES ('svc_timeout', 1, 1);"
+$DB_QUERY "INSERT INTO services (container_name, priority, is_active) VALUES ('svc_ok2', 1, 1);"
+
+SVC_TIMEOUT_ID=$($DB_QUERY "SELECT id FROM services WHERE container_name='svc_timeout';")
+SVC_OK2_ID=$($DB_QUERY "SELECT id FROM services WHERE container_name='svc_ok2';")
+
+$DB_QUERY "INSERT INTO jobs (service_id, status, start_time, end_time, duration, message)
+           VALUES ($SVC_TIMEOUT_ID, 'TIMEOUT',
+                   datetime('now', 'localtime'),
+                   datetime('now', 'localtime'),
+                   1, 'Pre-seeded TIMEOUT for test');"
+
+BASELINE_TO_COUNT=$($DB_QUERY "SELECT count(*) FROM jobs WHERE service_id=$SVC_TIMEOUT_ID;")
+
+timeout 15s "$SCHEDULER" --sequence &
+SCHEDULER_PID=$!
+sleep 10
+kill "$SCHEDULER_PID" 2>/dev/null
+wait "$SCHEDULER_PID" 2>/dev/null
+
+AFTER_TO_COUNT=$($DB_QUERY "SELECT count(*) FROM jobs WHERE service_id=$SVC_TIMEOUT_ID;")
+OK2_COMPLETED=$($DB_QUERY "SELECT count(*) FROM jobs WHERE service_id=$SVC_OK2_ID AND status='COMPLETED';")
+
+assert_eq "svc_timeout has no new jobs created" "$BASELINE_TO_COUNT" "$AFTER_TO_COUNT"
+
+if [ "$OK2_COMPLETED" -ge 1 ]; then
+    echo "[Pass] svc_ok2 completed at least once ($OK2_COMPLETED)"
+    PASS=$((PASS + 1))
+else
+    echo "[Fail] svc_ok2 should have completed at least once but got $OK2_COMPLETED"
+    FAIL=$((FAIL + 1))
+fi
+
+cleanup_test_db "$TEST_DB"
+
 print_test_summary
 exit $?
