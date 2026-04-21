@@ -9,6 +9,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/test_helper.sh"
 
 echo "[Test] Error Skip Test Started..."
 
+# Force 24-hour working hours so the scheduler's main loop isn't gated by time-of-day
+export START_TIME="00:00"
+export END_TIME="23:59"
+
 # ----------------------------------------------------------------------
 # Scenario 1: FAILED service is skipped; next eligible service runs.
 # ----------------------------------------------------------------------
@@ -17,8 +21,6 @@ echo "[Scenario 1] FAILED service should be skipped"
 
 TEST_DB=$(setup_test_db)
 export DB_PATH="$TEST_DB"
-DB_QUERY="$PROJECT_ROOT/bin/db_query.sh"
-SCHEDULER="$PROJECT_ROOT/bin/scheduler.sh"
 
 $DB_QUERY "INSERT INTO services (container_name, priority, is_active) VALUES ('svc_fail', 1, 1);"
 $DB_QUERY "INSERT INTO services (container_name, priority, is_active) VALUES ('svc_ok', 1, 1);"
