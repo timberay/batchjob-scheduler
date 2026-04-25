@@ -232,11 +232,33 @@ COMMIT;")
         exit $REAP_EXIT
     fi
 
+    # --- Single-instance lock (advisory flock) ---
+    # Prevents two scheduler main-loops from running against the same DB.
+    # Without this, parallel instances would race recovery logic and
+    # SIGKILL each other's tracked PIDs (critical issue #5 of the
+    # kill-path review). The lock is per-DB so isolated test DBs do
+    # not collide with the production scheduler.
+    # The lock is released automatically when this process exits — flock
+    # is bound to the file descriptor's lifetime, so crashes also release.
+    LOCK_FILE="${DB_PATH}.lock"
+    exec {SCHEDULER_LOCK_FD}>>"$LOCK_FILE" || {
+        echo "[Error] Failed to open lock file: $LOCK_FILE" >&2
+        exit 1
+    }
+    if ! flock -n "$SCHEDULER_LOCK_FD"; then
+        OTHER_PID=$(head -1 "$LOCK_FILE" 2>/dev/null)
+        echo "[Error] Another scheduler instance is already running (PID=${OTHER_PID:-unknown}, lock=$LOCK_FILE). Refusing to start." >&2
+        exit 1
+    fi
+    # Record our PID for diagnostics. Truncates via a separate FD; the
+    # advisory lock is on the inode, so write-truncation does not break it.
+    printf '%s\n' "$$" >"$LOCK_FILE"
+
     log "Batch Job Scheduler Started."
-    
+
     # Automatic Log Cleanup moved to loop
     LAST_LOG_CLEANUP=""
-    
+
     # Run Database Migration (ensure schema is up-to-date)
     "$PROJECT_ROOT/bin/migrate_db.sh"
     
