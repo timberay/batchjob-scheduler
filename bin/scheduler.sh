@@ -549,7 +549,17 @@ COMMIT;")
                         elif [ "$JOB_ID" = "0" ]; then
                             log "Concurrency cap race: slot filled by concurrent path. '$CONTAINER_NAME' is waiting..."
                         else
-                            run_indexing_task "$CONTAINER_NAME" &
+                            # Wrap the spawn in a subshell that ignores SIGTERM/SIGINT.
+                            # Under systemd KillMode=control-group or a tty Ctrl+C, every
+                            # process in the unit/PG receives the signal simultaneously.
+                            # Without this trap the subshell would exit before
+                            # cleanup_and_exit could walk BG_PIDS and kill each tree, and
+                            # the wrapped `timeout` child would be reparented to init and
+                            # keep running. The trap blocks the broadcast SIGTERM, giving
+                            # cleanup_and_exit time to issue explicit kill_process_tree
+                            # calls; the SIGKILL fallback in kill_process_tree still works
+                            # because SIGKILL cannot be trapped.
+                            ( trap '' SIGTERM SIGINT; run_indexing_task "$CONTAINER_NAME" ) &
                             PID=$!
                             BG_PIDS["$CONTAINER_NAME"]=$PID
                             BG_PREV_STATE["$CONTAINER_NAME"]="RUNNING"
