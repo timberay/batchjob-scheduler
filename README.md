@@ -139,6 +139,7 @@ Run these games to make sure the helper is working:
 ```bash
 # Resource Monitoring
 ./tests/test_monitor.sh             # Check all 10 resource metrics and thresholds
+./tests/test_threshold_boundary.sh  # Check check_thresholds -gt boundary semantics (at LIMIT = safe, LIMIT+1 = breach)
 
 # Scheduler Logic
 ./tests/test_scheduler_logic.sh     # Check the time and waiting rules
@@ -147,6 +148,7 @@ Run these games to make sure the helper is working:
 ./tests/test_concurrency_cap.sh     # Check that MAX_CONCURRENT_JOBS caps running jobs in both loop and --service paths
 ./tests/test_idle_timeout.sh        # Check if idle jobs (no CPU activity) are detected and stopped
 ./tests/test_sigterm_cleanup.sh     # Check if the helper cleans up on shutdown signal
+./tests/test_error_skip.sh          # Check FAILED/TIMEOUT jobs are excluded from next-job retry pool within the 23h window
 
 # Command Options
 ./tests/test_init_option.sh         # Check if the "start fresh" command works
