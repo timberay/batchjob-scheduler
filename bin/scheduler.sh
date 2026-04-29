@@ -711,8 +711,8 @@ COMMIT;")
                     else
                         # 7. Execute Job — atomic INSERT-if-under-cap guards race with manual trigger (bin/scheduler.sh:180)
                         JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; \
-INSERT INTO jobs (service_id, status, start_time) \
-SELECT $NEXT_SERVICE_ID, 'RUNNING', datetime('now', 'localtime') \
+INSERT INTO jobs (service_id, run_id, status, start_time) \
+SELECT $NEXT_SERVICE_ID, $CURRENT_RUN_ID, 'RUNNING', datetime('now', 'localtime') \
 WHERE (SELECT COUNT(*) FROM jobs WHERE status='RUNNING') < $MAX_CONCURRENT; \
 SELECT CASE WHEN changes() > 0 THEN last_insert_rowid() ELSE 0 END; \
 COMMIT;")
