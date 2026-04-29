@@ -281,18 +281,30 @@ if [[ "$1" != "--no-run" ]]; then
         exit 0
     fi
 
-    # Handle --init argument
+    # Handle --init argument — non-destructive: closes current run only.
     if [[ "$1" == "--init" ]]; then
-        log "Initializing all job records..."
-        # Check if any job is currently RUNNING
-        RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE status='RUNNING';")
-        if [ "$RUNNING_JOBS" -gt 0 ]; then
-            log "[Warning] There are $RUNNING_JOBS jobs currently in 'RUNNING' status."
-            log "Force initializing anyway..."
+        log "Aborting in-flight run (if any). History preserved."
+        OPEN_RUN=$($DB_QUERY "SELECT id FROM runs WHERE status='RUNNING' ORDER BY id DESC LIMIT 1;")
+        if [ -n "$OPEN_RUN" ]; then
+            RUNNING_JOBS=$($DB_QUERY "SELECT count(*) FROM jobs WHERE run_id=$OPEN_RUN AND status='RUNNING';")
+            if [ "$RUNNING_JOBS" -gt 0 ]; then
+                log "[Warning] $RUNNING_JOBS jobs in run #$OPEN_RUN are still RUNNING in the DB."
+                log "Marking the run ABORTED. Live processes (if any) will be reaped on next scheduler start."
+            fi
+            $DB_QUERY "UPDATE runs SET status='ABORTED', ended_at=datetime('now','localtime') WHERE id=$OPEN_RUN;"
+            log "Run #$OPEN_RUN marked ABORTED."
+        else
+            log "No in-flight run to abort."
         fi
-        
-        $DB_QUERY "DELETE FROM jobs;"
-        log "All job records have been cleared."
+        exit 0
+    fi
+
+    # Handle --purge-all argument — total wipe (was the old --init behavior).
+    # Use this only when you genuinely want to discard ALL history.
+    if [[ "$1" == "--purge-all" ]]; then
+        log "[Warning] --purge-all: deleting ALL jobs and runs. This cannot be undone."
+        $DB_QUERY "DELETE FROM jobs; DELETE FROM runs;"
+        log "All jobs and runs cleared. Services table preserved (configuration is not history)."
         exit 0
     fi
 
