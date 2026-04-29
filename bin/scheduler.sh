@@ -535,7 +535,8 @@ COMMIT;")
                    WHERE status='RUNNING'
                    AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
     fi
-    
+
+    CURRENT_RUN_ID=""
     while true; do
         # Log Cleanup (Keep last N days)
         CUR_DATE=$(date +%Y%m%d)
@@ -590,11 +591,27 @@ COMMIT;")
             MAX_CONCURRENT=3
         fi
 
-        # 2. Check Time Range
+        # 2. Check Time Range — also tracks run lifecycle transitions.
         if ! check_time_range "$START" "$END" > /dev/null; then
+            # If we just exited the window with an open run that still has
+            # incomplete services, mark it PARTIAL. (Natural-completion close
+            # below would have already moved status off RUNNING.)
+            OPEN_RUN=$(run_current_id)
+            if [ -n "$OPEN_RUN" ]; then
+                log "Window closed with run #$OPEN_RUN still open — marking PARTIAL."
+                run_close "$OPEN_RUN" PARTIAL
+            fi
             log "Outside working hours ($START ~ $END). Sleeping..."
         else
-            # 3. Get Next Job (Exclude services already RUNNING or COMPLETED today)
+            # Idempotent: opens a new run only if none is currently RUNNING.
+            CURRENT_RUN_ID=$(run_open_if_none auto)
+            if [ -z "$CURRENT_RUN_ID" ]; then
+                log "[Error] Failed to open or recover a run. Retrying in 30s..."
+                sleep 30
+                continue
+            fi
+
+            # 3. Get Next Job (Exclude services already attempted in this run)
             QUERY="SELECT s.id FROM services s 
                    LEFT JOIN (
                        SELECT service_id, AVG(duration) as avg_duration 
@@ -619,6 +636,13 @@ COMMIT;")
             fi
             
             if [ -z "$NEXT_SERVICE_ID" ]; then
+                # Natural completion: every active service has a row in this run.
+                # Close it COMPLETED so the next window entry opens a fresh run.
+                if [ -n "$CURRENT_RUN_ID" ]; then
+                    log "All tasks completed for run #$CURRENT_RUN_ID. Closing as COMPLETED."
+                    run_close "$CURRENT_RUN_ID" COMPLETED
+                    CURRENT_RUN_ID=""
+                fi
                 log "All tasks completed for today. Waiting..."
             else
                 CONTAINER_NAME=$($DB_QUERY "SELECT container_name FROM services WHERE id=$NEXT_SERVICE_ID;")

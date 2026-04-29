@@ -96,4 +96,28 @@ ROW_COUNT=$($DB_QUERY "SELECT COUNT(*) FROM runs;")
 assert_eq "no extra row inserted on recovery" "1" "$ROW_COUNT"
 cleanup_test_db "$TEST_DB3"
 
+echo "--- Window-entry / natural-completion wiring ---"
+
+# Wiring test uses a separate DB to avoid interference with earlier asserts.
+TEST_DB4=$(setup_test_db); export DB_PATH="$TEST_DB4"
+$DB_QUERY "INSERT INTO services(container_name) VALUES ('svc-a'),('svc-b');"
+
+# Simulate "window entry" — main loop calls run_open_if_none(auto)
+WID=$(run_open_if_none auto)
+[ -n "$WID" ] && PASS=$((PASS+1)) && echo "[Pass] window entry opens a run" \
+              || { FAIL=$((FAIL+1)); echo "[Fail] window entry did not open a run"; }
+
+# Simulate two services completing under that run
+$DB_QUERY "INSERT INTO jobs(service_id, run_id, status, start_time, end_time) VALUES
+    (1, $WID, 'COMPLETED', datetime('now','localtime'), datetime('now','localtime')),
+    (2, $WID, 'COMPLETED', datetime('now','localtime'), datetime('now','localtime'));"
+
+# Natural-completion path: close the run COMPLETED
+run_close "$WID" COMPLETED
+
+C=$($DB_QUERY "SELECT completed_count FROM runs WHERE id=$WID;")
+assert_eq "natural completion sets completed_count=2" "2" "$C"
+
+cleanup_test_db "$TEST_DB4"
+
 print_test_summary
