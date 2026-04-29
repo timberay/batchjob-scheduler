@@ -147,6 +147,51 @@ run_recover_stale() {
     fi
 }
 
+# Daily retention sweep — keeps MAX(RUN_RETENTION_MIN runs, RUN_RETENTION_DAYS days)
+# of finished runs and their jobs. RUNNING runs are never touched. Manual jobs
+# (run_id IS NULL) follow MANUAL_JOB_RETENTION_DAYS independently. Idempotent.
+runs_retention_cleanup() {
+    local MIN_KEEP="${RUN_RETENTION_MIN:-90}"
+    local KEEP_DAYS="${RUN_RETENTION_DAYS:-90}"
+    local MANUAL_DAYS="${MANUAL_JOB_RETENTION_DAYS:-30}"
+
+    # A finished run is KEPT if it is in either retention set:
+    #   (a) the most-recent MIN_KEEP finished runs by id, OR
+    #   (b) within the last KEEP_DAYS by started_at.
+    # It is DELETED only when it falls outside BOTH sets — that is exactly
+    # MAX(N runs, X days) of preserved history. RUNNING runs are never touched.
+    # Tie-safe: identical timestamps stay together because membership in the
+    # top-N window is by id, not by timestamp comparison.
+    #
+    # Cascade is bounded: only jobs older than the day window are pruned when
+    # their run is missing. This avoids nuking jobs that reference a run row
+    # that will be inserted shortly (e.g. test seeds, or a race between the
+    # job-INSERT and the run-INSERT in a concurrent scenario).
+    $DB_QUERY "
+DELETE FROM runs
+WHERE status != 'RUNNING'
+  AND id NOT IN (
+      SELECT id FROM runs
+      WHERE status != 'RUNNING'
+      ORDER BY id DESC LIMIT $MIN_KEEP
+  )
+  AND started_at < datetime('now','localtime','-$KEEP_DAYS days');
+
+-- Cascade: remove old jobs whose run is gone (orphaned by the delete above).
+-- Bounded by the day window so we never touch fresh jobs whose run row may
+-- not have been written yet.
+DELETE FROM jobs
+WHERE run_id IS NOT NULL
+  AND start_time < datetime('now','localtime','-$KEEP_DAYS days')
+  AND run_id NOT IN (SELECT id FROM runs);
+
+-- Manual jobs follow their own day-based retention.
+DELETE FROM jobs
+WHERE run_id IS NULL
+  AND start_time < datetime('now','localtime','-$MANUAL_DAYS days');
+"
+}
+
 # Function to execute indexing task and return exit code
 run_indexing_task() {
     local CONTAINER_NAME=$1
@@ -616,6 +661,10 @@ COMMIT;")
             LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
             find "$LOG_DIR" -name "*.log" -mtime +"$LOG_RETENTION_DAYS" -delete 2>/dev/null
             log "Cleaned up logs older than ${LOG_RETENTION_DAYS} days."
+            # Cycle history retention — runs older than the policy are pruned,
+            # along with their jobs. Manual jobs follow a separate day-based rule.
+            runs_retention_cleanup
+            log "Cleaned up runs older than max(${RUN_RETENTION_MIN:-90} runs, ${RUN_RETENTION_DAYS:-90} days); manual jobs older than ${MANUAL_JOB_RETENTION_DAYS:-30} days."
             LAST_LOG_CLEANUP="$CUR_DATE"
         fi
 
