@@ -62,6 +62,60 @@ format_duration() {
     printf "%dh %dm %ds" "$H" "$M" "$S"
 }
 
+# Run lifecycle helpers — cycle-based history.
+# Each "run" is one scheduling cycle: opened on window entry (idempotent),
+# closed when all services have a row OR the window ends OR the scheduler
+# shuts down. See ARCHITECTURE.md "Cycle history" for the full state machine.
+
+# Open a new run if none is currently RUNNING. Idempotent: returns the
+# existing run id when called repeatedly within the same cycle.
+# Args: $1 = triggered_by value ('auto' | 'init'). Defaults to 'auto'.
+# Stdout: the run id (integer).
+run_open_if_none() {
+    local TRIGGERED_BY="${1:-auto}"
+    local EXISTING
+    EXISTING=$($DB_QUERY "SELECT id FROM runs WHERE status='RUNNING' ORDER BY id DESC LIMIT 1;")
+    if [ -n "$EXISTING" ]; then
+        echo "$EXISTING"
+        return 0
+    fi
+    # Snapshot the active service count at run start so the run row carries
+    # the cycle's intended denominator even if services are deactivated mid-run.
+    local NEW_ID
+    NEW_ID=$($DB_QUERY "BEGIN IMMEDIATE; \
+INSERT INTO runs (started_at, status, triggered_by, total_services) \
+VALUES (datetime('now', 'localtime'), 'RUNNING', '$TRIGGERED_BY', \
+        (SELECT COUNT(*) FROM services WHERE is_active=1)); \
+SELECT last_insert_rowid(); \
+COMMIT;")
+    echo "$NEW_ID"
+}
+
+# Return the id of the currently RUNNING run, or empty if none.
+run_current_id() {
+    $DB_QUERY "SELECT id FROM runs WHERE status='RUNNING' ORDER BY id DESC LIMIT 1;"
+}
+
+# Close a run: aggregate per-status job counts into the row, set ended_at,
+# and switch status. Args: $1 = run id, $2 = terminal status
+# (COMPLETED | PARTIAL | ABORTED).
+run_close() {
+    local RUN_ID="$1"
+    local FINAL_STATUS="$2"
+    if [ -z "$RUN_ID" ] || [ -z "$FINAL_STATUS" ]; then
+        log "[Error] run_close: missing args (run_id='$RUN_ID', status='$FINAL_STATUS')"
+        return 1
+    fi
+    $DB_QUERY "UPDATE runs SET
+        status='$FINAL_STATUS',
+        ended_at=datetime('now', 'localtime'),
+        completed_count=(SELECT COUNT(*) FROM jobs WHERE run_id=$RUN_ID AND status='COMPLETED'),
+        failed_count=(SELECT COUNT(*) FROM jobs WHERE run_id=$RUN_ID AND status='FAILED'),
+        timeout_count=(SELECT COUNT(*) FROM jobs WHERE run_id=$RUN_ID AND status='TIMEOUT'),
+        orphaned_count=(SELECT COUNT(*) FROM jobs WHERE run_id=$RUN_ID AND status='ORPHANED')
+        WHERE id=$RUN_ID;"
+}
+
 # Function to execute indexing task and return exit code
 run_indexing_task() {
     local CONTAINER_NAME=$1
