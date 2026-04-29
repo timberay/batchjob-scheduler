@@ -131,6 +131,22 @@ run_close() {
     return 0
 }
 
+# Sweep stale RUNNING runs left over from a prior crashed scheduler. Mirrors
+# the ORPHANED-jobs recovery sweep below — both run unconditionally on
+# scheduler start. Idempotent: a second call is a no-op because the first
+# already moved every RUNNING row to ABORTED.
+run_recover_stale() {
+    local STALE
+    STALE=$($DB_QUERY "SELECT id FROM runs WHERE status='RUNNING';")
+    if [ -n "$STALE" ]; then
+        while read -r RID; do
+            [ -z "$RID" ] && continue
+            log "[Recovery] Closing stale RUNNING run #$RID as ABORTED."
+            run_close "$RID" ABORTED
+        done <<< "$STALE"
+    fi
+}
+
 # Function to execute indexing task and return exit code
 run_indexing_task() {
     local CONTAINER_NAME=$1
@@ -546,6 +562,11 @@ COMMIT;")
                    WHERE status='RUNNING'
                    AND (process_state IS NULL OR process_state NOT IN ('COMPLETED', 'FAILED'));"
     fi
+
+    # Mirrors the ORPHANED-jobs sweep above: any leftover RUNNING run row from
+    # a crashed prior process is closed without touching that cycle's job
+    # rows, so a clean run can be opened on next window entry.
+    run_recover_stale
 
     CURRENT_RUN_ID=""
     while true; do
