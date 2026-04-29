@@ -305,6 +305,14 @@ if [[ "$1" != "--no-run" ]]; then
         fi
 
         # Atomic INSERT-if-under-cap: race-safe against main-loop scheduler
+        # NOTE: --service is an ad-hoc trigger; we deliberately leave run_id
+        # unset so SQLite defaults it to NULL. This keeps manual runs out of
+        # auto-cycle dedup (the j.run_id = $CURRENT_RUN_ID predicate is
+        # automatically false for NULL) and out of run-level statistics
+        # (completed_count/failed_count are scoped to a specific run_id).
+        # If you ever need to attribute a manual trigger to a cycle, prefer
+        # adding a 'manual' run via run_open_if_none "manual" rather than
+        # tagging this row with the auto-cycle's run_id.
         JOB_ID=$($DB_QUERY "BEGIN IMMEDIATE; \
 INSERT INTO jobs (service_id, status, start_time) \
 SELECT $S_ID, 'RUNNING', datetime('now', 'localtime') \
