@@ -187,6 +187,7 @@ Run these games to make sure the helper is working:
 ./tests/test_init_semantics.sh          # Check --init aborts the current run only (non-destructive)
 ./tests/test_status_runs.sh             # Check --status reports the latest run summary and counters
 ./tests/test_retention.sh               # Check retention keeps MAX(RUN_RETENTION_MIN, RUN_RETENTION_DAYS)
+./tests/test_smoke_e2e.sh               # Drive the real bin/scheduler.sh end-to-end (--status / --service / main-loop COMPLETED + PARTIAL on window exit)
 
 # Command Options
 ./tests/test_init_option.sh         # Check the run-abort behavior of --init (and --purge-all wipe path)
